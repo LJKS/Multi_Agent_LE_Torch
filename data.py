@@ -5,7 +5,7 @@ import os
 def load_prepared_coco_data(
     path="np_dataset/vocab2000_feat_cap_id_train_test_andvocab.pickle",
 ):
-    path = os.getcwd() + '/' + path
+    path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
     with open(path, "rb") as file:
         readout = pickle.load(file)
     datasets = readout[0]
