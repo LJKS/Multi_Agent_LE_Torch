@@ -1,7 +1,70 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
-    <content url="file://$MODULE_DIR$" />
+    <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/results/06_02_2022,18:04:42" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_02_2022,18:14:11" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_02_2022,18:15:15" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_02_2022,18:17:20" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_02_2022,18:22:02" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_02_2022,18:25:33" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_02_2022,18:30:34" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_02_2022,19:32:46" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_02_2022,19:49:16" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_02_2022,20:02:02" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,11:57:46" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,11:59:33" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,12:01:22" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,12:02:00" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,12:02:47" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,12:03:16" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,12:13:50" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,12:14:14" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,12:15:38" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,12:16:41" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,12:18:23" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,12:20:21" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,12:30:04" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,12:52:46" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_03_2022,23:15:26" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,10:52:07" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,10:56:18" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,10:56:35" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,10:58:37" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,10:59:24" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,11:01:29" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,11:02:18" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,11:42:22" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,11:47:50" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,11:48:45" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,11:52:11" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,12:17:00" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,12:18:33" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,12:39:29" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,12:53:36" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,12:56:54" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,12:58:54" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,13:01:47" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,13:03:06" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,13:42:29" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,14:31:45" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,16:55:59" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,16:58:31" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,17:00:16" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,17:02:25" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,17:03:43" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,19:16:47" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,19:38:17" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,19:39:01" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,19:39:35" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,19:46:36" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,19:48:45" />
+      <excludeFolder url="file://$MODULE_DIR$/results/06_08_2022,19:49:17" />
+      <excludeFolder url="file://$MODULE_DIR$/results/baseline_population_training_lstm128" />
+      <excludeFolder url="file://$MODULE_DIR$/results/commentary_idx_training_lstm128" />
+      <excludeFolder url="file://$MODULE_DIR$/results/old_results" />
+      <excludeFolder url="file://$MODULE_DIR$/results/tscl_population_training_lstm128" />
+    </content>
     <orderEntry type="jdk" jdkName="Python 3.9 (Multi_Agent_LE_Torch2)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
