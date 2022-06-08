@@ -22,7 +22,7 @@ def summarize_key_args(args, key_args):
 def tscl_population_training_lstm128(args):
     key_args = ['num_senders', 'num_receivers', 'num_distractors', 'fifo_size', 'epsilon']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
-    path = os.getcwd() + '/' path
+    path = os.getcwd() + '/' + path
 
     save_path = path + 'saves/'
     for which_training in ['pretraining', 'finetuning']:
@@ -92,6 +92,7 @@ def tscl_population_training_lstm128(args):
 def commentary_idx_training_lstm128(args):
     key_args = ['num_senders', 'num_receivers', 'num_distractors']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
+    path = os.getcwd() + '/' + path
 
     save_path = path + 'saves/'
     for which_training in ['pretraining', 'finetuning']:
@@ -175,7 +176,7 @@ def commentary_weighting_training_lstm128(args):
 
     key_args = ['num_senders', 'num_receivers', 'num_distractors']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
-    path = os.getcwd() + '/' path
+    path = os.getcwd() + '/' + path
 
     save_path = path + 'saves/'
     for which_training in ['pretraining', 'finetuning']:
@@ -254,7 +255,7 @@ def commentary_weighting_training_lstm128(args):
 def baseline_population_training_lstm128(args):
     key_args = ['num_senders', 'num_receivers', 'num_distractors']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
-    path = os.getcwd() + '/' path
+    path = os.getcwd() + '/' + path
 
 
     save_path = path + 'saves/'
