@@ -5,6 +5,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=30
 #SBATCH --partition=gpu
+#SBATCH --gpu-bind=single:1
 source $HOME/.bashrc
 spack load miniconda3@4.10.3
 conda activate Multi_Agent_LE_Torch2
