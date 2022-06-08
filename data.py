@@ -1,10 +1,11 @@
 import torch
 import pickle
-
+import os
 
 def load_prepared_coco_data(
     path="np_dataset/vocab2000_feat_cap_id_train_test_andvocab.pickle",
 ):
+    path = os.getcwd() + '/' path
     with open(path, "rb") as file:
         readout = pickle.load(file)
     datasets = readout[0]
