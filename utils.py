@@ -1,6 +1,16 @@
 import numpy as np
 import scipy.stats as stats
+import torch
 import sys
+
+def safe_compute_accuracy_metric(accuracy):
+    try:
+        acc = accuracy.compute().to(device='cpu')
+        #make sure even after resetting this does not just set a zero acc but correctly yields a nan acc
+        acc = acc if not acc==torch.as_tensor(0.) else torch.as_tensor(float('nan'))
+        return acc
+    except:
+        return torch.as_tensor(float('nan'))
 
 def cycle_dataloader(dataloader):
     while True:

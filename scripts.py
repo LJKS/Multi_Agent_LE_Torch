@@ -20,6 +20,7 @@ def summarize_key_args(args, key_args):
 
 
 def tscl_population_training_lstm128(args):
+    print(f'Sees {torch.cuda.device_count()} CUDA devices')
     key_args = ['num_senders', 'num_receivers', 'num_distractors', 'fifo_size', 'epsilon']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
@@ -90,6 +91,7 @@ def tscl_population_training_lstm128(args):
             torch.save(network.state_dict(), network_path)
 
 def commentary_idx_training_lstm128(args):
+    print(f'Sees {torch.cuda.device_count()} CUDA devices')
     key_args = ['num_senders', 'num_receivers', 'num_distractors']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
@@ -173,6 +175,7 @@ def commentary_idx_training_lstm128(args):
     torch.save(commentary_nn.state_dict(), c_network_path)
 
 def commentary_weighting_training_lstm128(args):
+    print(f'Sees {torch.cuda.device_count()} CUDA devices')
 
     key_args = ['num_senders', 'num_receivers', 'num_distractors']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
@@ -253,6 +256,8 @@ def commentary_weighting_training_lstm128(args):
 
 
 def baseline_population_training_lstm128(args):
+    print(f'Sees {torch.cuda.device_count()} CUDA devices')
+
     key_args = ['num_senders', 'num_receivers', 'num_distractors']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path

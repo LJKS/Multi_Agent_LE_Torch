@@ -240,7 +240,7 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
                 training_loss.reset()
 
                 training_acc = training_acc_grid[sender_idx][receiver_idx]
-                episode_training_acc = training_acc.compute()
+                episode_training_acc = utils.safe_compute_accuracy_metric(training_acc)
                 training_acc.reset()
 
                 test_loss = test_loss_grid[sender_idx][receiver_idx]
@@ -248,7 +248,7 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
                 test_loss.reset()
 
                 test_acc = test_acc_grid[sender_idx][receiver_idx]
-                episode_test_acc = test_acc.compute()
+                episode_test_acc = utils.safe_compute_accuracy_metric(test_acc)
                 test_acc.reset()
 
                 write_dict[f'training_loss_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_training_loss
@@ -485,7 +485,7 @@ def idx_commentary_training_interactive_only(senders, receivers, commentary_netw
                 training_loss.reset()
 
                 training_acc = training_acc_grid[sender_idx][receiver_idx]
-                episode_training_acc = training_acc.compute()
+                episode_training_acc = utils.safe_compute_accuracy_metric(training_acc)
                 training_acc.reset()
 
                 test_loss = test_loss_grid[sender_idx][receiver_idx]
@@ -493,7 +493,7 @@ def idx_commentary_training_interactive_only(senders, receivers, commentary_netw
                 test_loss.reset()
 
                 test_acc = test_acc_grid[sender_idx][receiver_idx]
-                episode_test_acc = test_acc.compute()
+                episode_test_acc = utils.safe_compute_accuracy_metric(test_acc)
                 test_acc.reset()
 
                 commentary_weight = commentary_weight_grid[sender_idx][receiver_idx]
@@ -526,7 +526,7 @@ def idx_commentary_training_interactive_only(senders, receivers, commentary_netw
             write_dict[f'supervised_loss_sender_{sender_idx}'] = episode_sup_sender_loss
 
         for receiver_idx in range(num_receivers):
-            episode_sup_receiver_acc = sup_receiver_acc[receiver_idx].compute()
+            episode_sup_receiver_acc = utils.safe_compute_accuracy_metric(sup_receiver_acc[receiver_idx])
             sup_receiver_acc[receiver_idx].reset()
             write_dict[f'supervised_acc_receiver_{receiver_idx}'] = episode_sup_receiver_acc
 
@@ -773,7 +773,7 @@ def weighted_softmax_commentary_training_interactive_only(senders, receivers, co
                 training_loss.reset()
 
                 training_acc = training_acc_grid[sender_idx][receiver_idx]
-                episode_training_acc = training_acc.compute()
+                episode_training_acc = utils.safe_compute_accuracy_metric(training_acc)
                 training_acc.reset()
 
                 test_loss = test_loss_grid[sender_idx][receiver_idx]
@@ -781,7 +781,7 @@ def weighted_softmax_commentary_training_interactive_only(senders, receivers, co
                 test_loss.reset()
 
                 test_acc = test_acc_grid[sender_idx][receiver_idx]
-                episode_test_acc = test_acc.compute()
+                episode_test_acc = utils.safe_compute_accuracy_metric(test_acc)
                 test_acc.reset()
 
                 commentary_weight = commentary_weight_grid[sender_idx][receiver_idx]
@@ -814,7 +814,7 @@ def weighted_softmax_commentary_training_interactive_only(senders, receivers, co
             write_dict[f'supervised_loss_sender_{sender_idx}'] = episode_sup_sender_loss
 
         for receiver_idx in range(num_receivers):
-            episode_sup_receiver_acc = sup_receiver_acc[receiver_idx].compute()
+            episode_sup_receiver_acc = utils.safe_compute_accuracy_metric(sup_receiver_acc[receiver_idx])
             sup_receiver_acc[receiver_idx].reset()
             write_dict[f'supervised_acc_receiver_{receiver_idx}'] = episode_sup_receiver_acc
 
@@ -979,7 +979,7 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
                 training_loss.reset()
 
                 training_acc = training_acc_grid[sender_idx][receiver_idx]
-                episode_training_acc = training_acc.compute()
+                episode_training_acc = utils.safe_compute_accuracy_metric(training_acc)
                 training_acc.reset()
 
                 test_loss = test_loss_grid[sender_idx][receiver_idx]
@@ -987,7 +987,7 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
                 test_loss.reset()
 
                 test_acc = test_acc_grid[sender_idx][receiver_idx]
-                episode_test_acc = test_acc.compute()
+                episode_test_acc = utils.safe_compute_accuracy_metric(test_acc)
                 test_acc.reset()
 
                 #tscl value of each task
