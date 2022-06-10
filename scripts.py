@@ -47,6 +47,8 @@ def tscl_population_training_lstm128(args):
     pretraining_epochs = args.pretraining_epochs
     finetuning_epochs = args.finetuning_epochs
 
+    repeats_per_epoch= args.repeats_per_epoch
+
     epsilon = args.epsilon
     fifo_size = args.fifo_size
 
@@ -81,7 +83,7 @@ def tscl_population_training_lstm128(args):
             torch.save(network.state_dict(), network_path)
 
     print('Interactive finetuning')
-    marl_training.tscl_multiagent_training_interactive_only(senders=senders, receivers=receivers, receiver_lr=receiver_lr, sender_lr=sender_lr, num_distractors=num_distractors, path=path+'finetuning', writer_tag=writer_tag, fifo_size=fifo_size, num_episodes=finetuning_epochs, batch_size=batch_size, epsilon=epsilon, device=device)
+    marl_training.tscl_multiagent_training_interactive_only(senders=senders, receivers=receivers, receiver_lr=receiver_lr, sender_lr=sender_lr, num_distractors=num_distractors, path=path+'finetuning', writer_tag=writer_tag, fifo_size=fifo_size, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, epsilon=epsilon, device=device)
 
     for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
         for num, network in enumerate(networks):
@@ -118,6 +120,8 @@ def commentary_idx_training_lstm128(args):
 
     pretraining_epochs = args.pretraining_epochs
     finetuning_epochs = args.finetuning_epochs
+
+    repeats_per_epoch = args.repeats_per_epoch
 
     inner_loop_steps = args.inner_loop_steps
     commentary_nn = commentary_networks.idx_commentary_network(num_senders, num_receivers, 16, 16)
@@ -160,7 +164,7 @@ def commentary_idx_training_lstm128(args):
                                                                         writer_tag=writer_tag,
                                                                         num_inner_loop_steps=inner_loop_steps,
                                                                         num_episodes=finetuning_epochs,
-                                                                        batch_size=batch_size, device=device)
+                                                                        batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device)
 
     for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
         for num, network in enumerate(networks):
@@ -204,6 +208,8 @@ def commentary_weighting_training_lstm128(args):
     pretraining_epochs = args.pretraining_epochs
     finetuning_epochs = args.finetuning_epochs
 
+    repeats_per_epoch = args.repeats_per_epoch
+
     inner_loop_steps = args.inner_loop_steps
     commentary_nn = commentary_networks.objects_commentary_network_normalized(num_senders, num_receivers, 64, 2049, 2,
                                                                               2, 64, 4)
@@ -240,7 +246,7 @@ def commentary_weighting_training_lstm128(args):
 
     marl_training.weighted_softmax_commentary_training_interactive_only(senders=senders, receivers=receivers, commentary_network=commentary_nn, receiver_lr=receiver_lr, sender_lr=sender_lr,
                                                           commentary_lr=commentary_lr, num_distractors=num_distractors, path=path, writer_tag=writer_tag, num_inner_loop_steps=inner_loop_steps, num_episodes=finetuning_epochs,
-                                                          batch_size=batch_size, device=device)
+                                                          batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device)
 
     for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
         for num, network in enumerate(networks):
@@ -284,6 +290,7 @@ def baseline_population_training_lstm128(args):
 
     pretraining_epochs = args.pretraining_epochs
     finetuning_epochs = args.finetuning_epochs
+    repeats_per_epoch = args.repeats_per_epoch
 
 
 
@@ -311,7 +318,7 @@ def baseline_population_training_lstm128(args):
 
     print('Interactive finetuning')
     marl_training.baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path+'finetuning',
-                                                  writer_tag=writer_tag, num_episodes=finetuning_epochs, batch_size=batch_size, device=device,
+                                                  writer_tag=writer_tag, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device,
                                                   baseline_polyak=0.99)
     for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
         for num, network in enumerate(networks):
@@ -340,6 +347,7 @@ if __name__ == '__main__':
     parser.add_argument('--epsilon', type=float, default=0.1)
     parser.add_argument('--commentary_lr', type=float, default=0.00001)
     parser.add_argument('--inner_loop_steps', type=int, default=2)
+    parser.add_argument('repeats_per_epoch', type=int, default=1)
 
     script_dict = {'baseline_population_training_lstm128':baseline_population_training_lstm128, 'tscl_population_training_lstm128':tscl_population_training_lstm128, 'commentary_weighting_training_lstm128':commentary_weighting_training_lstm128, 'commentary_idx_training_lstm128':commentary_idx_training_lstm128}
 

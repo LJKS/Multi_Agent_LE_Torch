@@ -3,6 +3,11 @@ import scipy.stats as stats
 import torch
 import sys
 
+def repeat_dataset(dataset, repeats=1):
+    for _ in range(repeats):
+        for elem in dataset:
+            yield elem
+
 def safe_compute_accuracy_metric(accuracy):
     try:
         acc = accuracy.compute().to(device='cpu')

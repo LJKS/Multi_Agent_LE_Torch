@@ -9,4 +9,4 @@
 source $HOME/.bashrc
 spack load miniconda3@4.10.3
 conda activate Multi_Agent_LE_Torch2
-srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment commentary_weighting_training_lstm128 --batch_size 1024
+srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment commentary_weighting_training_lstm128 --batch_size 1024 --repeats_per_epoch 4

@@ -94,7 +94,7 @@ def prob_mask(tokens, eos_token=4):
     return eos_tokens
 
 
-def baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, writer_tag, num_episodes=200, batch_size=512, num_workers=4, device='cpu', baseline_polyak=0.99):
+def baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, writer_tag, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99):
 
     #indexing here will generally be first sender index, then receiver index for anything that has num_senders x num_receivers elements arranged in a 2d grid
 
@@ -139,7 +139,7 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
 
     for episode in (p_bar := tqdm(range(num_episodes))):
 
-        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in data_loader_train:
+        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_train, repeats_per_epoch):
 
             receiver_idx = random.randrange(0, num_receivers)
             sender_idx = random.randrange(0, num_senders)
@@ -192,8 +192,7 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
 
 
 
-        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in data_loader_test:
-
+        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_test, repeats_per_epoch):
             receiver_idx = random.randrange(0, num_receivers)
             sender_idx = random.randrange(0, num_senders)
             sender = senders[sender_idx]
@@ -269,7 +268,7 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
 
     writer.flush()
 
-def idx_commentary_training_interactive_only(senders, receivers, commentary_network, receiver_lr, sender_lr, commentary_lr, num_distractors, path, writer_tag, num_inner_loop_steps=2, num_episodes=200, batch_size=512, num_workers=4, device='cpu', baseline_polyak=0.99):
+def idx_commentary_training_interactive_only(senders, receivers, commentary_network, receiver_lr, sender_lr, commentary_lr, num_distractors, path, writer_tag, num_inner_loop_steps=2, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99):
     # indexing here will generally be first sender index, then receiver index for anything that has num_senders x num_receivers elements arranged in a 2d grid
 
     num_senders = len(senders)
@@ -336,7 +335,7 @@ def idx_commentary_training_interactive_only(senders, receivers, commentary_netw
     for episode in (p_bar := tqdm(range(num_episodes))):
         zipped_training_data_loader = zip(*data_loaders_train)
         training_val_data_loader = zip(utils.cycle_dataloader(data_loader_validation), zipped_training_data_loader)
-        for val_data, inner_loop_step_data in training_val_data_loader:
+        for val_data, inner_loop_step_data in utils.repeat_dataset(training_val_data_loader, repeats_per_epoch):
 
             optimizer_commentary_network.zero_grad()
             receiver_idx = random.randrange(0, num_receivers)
@@ -437,7 +436,7 @@ def idx_commentary_training_interactive_only(senders, receivers, commentary_netw
         #test
         sender_write_flags = [True for _ in senders]
 
-        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in data_loader_test:
+        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_test, repeats_per_epoch):
 
             receiver_idx = random.randrange(0, num_receivers)
             sender_idx = random.randrange(0, num_senders)
@@ -544,7 +543,7 @@ def idx_commentary_training_interactive_only(senders, receivers, commentary_netw
 
     writer.flush()
 
-def weighted_softmax_commentary_training_interactive_only(senders, receivers, commentary_network, receiver_lr, sender_lr, commentary_lr, num_distractors, path, writer_tag, num_inner_loop_steps=2, num_episodes=200, batch_size=512, num_workers=4, device='cpu', baseline_polyak=0.99):
+def weighted_softmax_commentary_training_interactive_only(senders, receivers, commentary_network, receiver_lr, sender_lr, commentary_lr, num_distractors, path, writer_tag, num_inner_loop_steps=2, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99):
     # indexing here will generally be first sender index, then receiver index for anything that has num_senders x num_receivers elements arranged in a 2d grid
 
     num_senders = len(senders)
@@ -623,7 +622,7 @@ def weighted_softmax_commentary_training_interactive_only(senders, receivers, co
     for episode in (p_bar := tqdm(range(num_episodes))):
         zipped_training_data_loader = zip(*data_loaders_train)
         training_val_data_loader = zip(utils.cycle_dataloader(data_loader_validation), zipped_training_data_loader)
-        for val_data, inner_loop_step_data in training_val_data_loader:
+        for val_data, inner_loop_step_data in utils.repeat_dataset(training_val_data_loader, repeats_per_epoch):
 
             optimizer_commentary_network.zero_grad()
             receiver_idx = random.randrange(0, num_receivers)
@@ -724,7 +723,7 @@ def weighted_softmax_commentary_training_interactive_only(senders, receivers, co
         #test
         sender_write_flags = [True for _ in senders]
 
-        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in data_loader_test:
+        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_test, repeats_per_epoch):
 
             receiver_idx = random.randrange(0, num_receivers)
             sender_idx = random.randrange(0, num_senders)
@@ -832,7 +831,7 @@ def weighted_softmax_commentary_training_interactive_only(senders, receivers, co
 
     writer.flush()
 
-def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, writer_tag, epsilon=0.1, fifo_size=10, num_episodes=200, batch_size=512, num_workers=4, device='cpu', baseline_polyak=0.99):
+def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, writer_tag, epsilon=0.1, fifo_size=10, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99):
 
     #indexing here will generally be first sender index, then receiver index for anything that has num_senders x num_receivers elements arranged in a 2d grid
 
@@ -879,7 +878,7 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
 
     for episode in (p_bar := tqdm(range(num_episodes))):
 
-        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in data_loader_train:
+        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_train, repeats_per_epoch):
             sender_idx, receiver_idx = tscl.sample_epsilon_greedy(epsilon=epsilon)
             sender = senders[sender_idx]
             receiver = receivers[receiver_idx]
@@ -931,7 +930,7 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
 
 
 
-        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in data_loader_test:
+        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_test, repeats_per_epoch):
 
             receiver_idx = random.randrange(0, num_receivers)
             sender_idx = random.randrange(0, num_senders)
