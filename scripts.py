@@ -347,7 +347,7 @@ if __name__ == '__main__':
     parser.add_argument('--epsilon', type=float, default=0.1)
     parser.add_argument('--commentary_lr', type=float, default=0.00001)
     parser.add_argument('--inner_loop_steps', type=int, default=2)
-    parser.add_argument('repeats_per_epoch', type=int, default=1)
+    parser.add_argument('--repeats_per_epoch', type=int, default=1)
 
     script_dict = {'baseline_population_training_lstm128':baseline_population_training_lstm128, 'tscl_population_training_lstm128':tscl_population_training_lstm128, 'commentary_weighting_training_lstm128':commentary_weighting_training_lstm128, 'commentary_idx_training_lstm128':commentary_idx_training_lstm128}
 
