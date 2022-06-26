@@ -1013,7 +1013,7 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
     writer.flush()
 
 if __name__ == '__main__':
-
+    """
     path = f'results/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
     writer_tag = 'idx:commentaries'
     num_distractors = 1
@@ -1047,7 +1047,7 @@ if __name__ == '__main__':
                                                                          device=device)
     receivers = [pretrain_receiver(receiver) for receiver in tqdm(receivers)]
     tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, writer_tag, fifo_size=10, device=device)
-
+    """
 
     """
     path = f'results/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
@@ -1109,3 +1109,39 @@ if __name__ == '__main__':
     receivers = [pretrain_receiver(receiver) for receiver in tqdm(receivers)]
     idx_commentary_training_interactive_only(senders, receivers, commentary_nn, receiver_lr, sender_lr, commentary_lr, num_distractors, path, writer_tag, batch_size=256, device=device)
     """
+
+    path = f'results/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
+    writer_tag = 'idx:commentaries'
+    num_distractors = 1
+    pretrain_episodes = 15
+
+    device = torch.device('cuda:0')
+    num_senders = 2
+    num_receivers = 2
+
+    receiver_lr = 0.00000001
+    sender_lr = 0.00000001
+
+    senders = [agents.lstm_sender_agent(feature_size=2049, text_embedding_size=128, vocab_size=2000, lstm_size=128,
+                                        lstm_depth=2, feature_embedding_hidden_size=64) for _ in range(num_senders)]
+    pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
+                                                                   writer_tag='a_sender', batch_size=256,
+                                                                   num_distractors=num_distractors,
+                                                                   num_episodes=pretrain_episodes, device=device)
+    senders = [pretrain_sender(sender) for sender in tqdm(senders)]
+
+    receivers = [agents.lstm_receiver_agent(feature_size=2048, text_embedding_size=128, vocab_size=2000, lstm_size=128,
+                                            lstm_depth=2, feature_embedding_hidden_size=64, readout_hidden_size=32) for
+                 _ in range(num_receivers)]
+
+    pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver,
+                                                                         num_episodes=pretrain_episodes,
+                                                                         path=path + 'receiver_pretraining',
+                                                                         writer_tag='a_l_receiver',
+                                                                         batch_size=128,
+                                                                         num_distractors=num_distractors, lr=0.0001,
+                                                                         device=device)
+    receivers = [pretrain_receiver(receiver) for receiver in tqdm(receivers)]
+    baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path,
+                                                  writer_tag, num_episodes=200, batch_size=512, num_workers=4,
+                                                  repeats_per_epoch=1, device=device, baseline_polyak=0.99)

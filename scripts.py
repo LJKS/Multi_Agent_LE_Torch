@@ -334,7 +334,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='scripts running MARL LE experiments')
     parser.add_argument('--experiment')
     parser.add_argument('--pretraining_lr', type=float, default=0.0001)
-    parser.add_argument('--finetuning_lr', type=float, default=0.0000001)
+    parser.add_argument('--finetuning_lr', type=float, default=0.000000001)
     parser.add_argument('--num_senders', type=int, default=2)
     parser.add_argument('--num_receivers', type=int, default=2)
     parser.add_argument('--batch_size', type=int, default=512)
