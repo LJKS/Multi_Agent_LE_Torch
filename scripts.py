@@ -337,7 +337,7 @@ if __name__ == '__main__':
     parser.add_argument('--finetuning_lr', type=float, default=0.000001)
     parser.add_argument('--num_senders', type=int, default=2)
     parser.add_argument('--num_receivers', type=int, default=2)
-    parser.add_argument('--batch_size', type=int, default=512)
+    parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--pretraining_epochs', type=int, default=25)
     parser.add_argument('--finetuning_epochs', type=int, default=400)
     parser.add_argument('--tag', default='no_tag_given')
