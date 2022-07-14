@@ -1119,8 +1119,8 @@ if __name__ == '__main__':
     num_senders = 2
     num_receivers = 2
 
-    receiver_lr = 0.00000001
-    sender_lr = 0.00000001
+    receiver_lr = 0.000001
+    sender_lr = 0.000001
 
     senders = [agents.lstm_sender_agent(feature_size=2049, text_embedding_size=128, vocab_size=2000, lstm_size=128,
                                         lstm_depth=2, feature_embedding_hidden_size=64) for _ in range(num_senders)]

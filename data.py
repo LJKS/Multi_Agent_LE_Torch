@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import pickle
 import os
@@ -91,8 +92,27 @@ def create_data_loader(
     )
     return data_loader
 
+def create_ngram_loader(dataset,
+    batch_size,
+    n,
+    num_workers,
+    prefetch=4):
+    ngrams = create_ngrams(n, dataset)
 
+    dataloader = torch.utils.data.DataLoader(dataset=ngrams, batch_size=batch_size, shuffle=True, num_workers=num_workers, collate_fn=lambda x: torch.from_numpy(np.stack(x)), drop_last=True, prefetch_factor=prefetch, pin_memory=True)
+    return dataloader
+
+def create_ngrams(n, data):
+    ngram_agg = []
+    for elem in data:
+        seq = elem[1] # data comes as [features, seq, id]
+        if seq.size >= n: #exclude any seq not long enough to form an ngram
+            ngrams = np.lib.stride_tricks.sliding_window_view(seq, window_shape=n)
+            ngram_agg.append(ngrams)
+    ngrams = np.concatenate(ngram_agg, axis=0)
+    return ngrams
 if __name__ == "__main__":
+    """
     (train_ds, test_ds), vocab = load_prepared_coco_data()
     data_loader_train = create_data_loader(
         train_ds, batch_size=16, num_distractors=7, num_workers=4
@@ -102,3 +122,12 @@ if __name__ == "__main__":
     )
     for elem in data_loader_train:
         print([e.shape for e in elem])
+    """
+    (train_ds, test_ds), vocab = load_prepared_coco_data()
+    data = create_ngram_loader(train_ds, batch_size=32, n=5, num_workers=3)
+    for i, elem in enumerate(data):
+        print(elem.shape)
+        if i > 5:
+            break
+
+

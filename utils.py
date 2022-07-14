@@ -105,6 +105,14 @@ class tscl_helper():
         sender, receiver = self.sender_target_idx(f_idx)
         return sender, receiver
 
+class cbow_average_module(torch.nn.Module):
+    def __init__(self, dim=1):
+        super().__init__()
+        self.average_dim = dim
+
+    def forward(self, x):
+        average = torch.mean(x, dim=self.average_dim)
+        return average
 
 
 
