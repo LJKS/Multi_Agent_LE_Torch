@@ -6,10 +6,13 @@ import data
 import argparse
 import os
 import torch
+import random
+import string
 from datetime import datetime
 from tqdm import tqdm
 
-
+def random_desc_string():
+    ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(N))
 
 def summarize_key_args(args, key_args):
     summary=''
@@ -22,7 +25,7 @@ def summarize_key_args(args, key_args):
 def tscl_population_training_lstm128(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
     key_args = ['num_senders', 'num_receivers', 'num_distractors', 'fifo_size', 'epsilon']
-    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
+    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
 
     save_path = path + 'saves/'
@@ -95,7 +98,7 @@ def tscl_population_training_lstm128(args):
 def commentary_idx_training_lstm128(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
     key_args = ['num_senders', 'num_receivers', 'num_distractors']
-    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
+    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
 
     save_path = path + 'saves/'
@@ -181,8 +184,8 @@ def commentary_idx_training_lstm128(args):
 def commentary_weighting_training_lstm128(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
 
-    key_args = ['num_senders', 'num_receivers', 'num_distractors']
-    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
+    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'finetuning_lr', 'batch_size']
+    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
 
     save_path = path + 'saves/'
@@ -264,8 +267,8 @@ def commentary_weighting_training_lstm128(args):
 def baseline_population_training_lstm128(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
 
-    key_args = ['num_senders', 'num_receivers', 'num_distractors']
-    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
+    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'finetuning_lr', 'batch_size']
+    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
 
 
@@ -328,7 +331,71 @@ def baseline_population_training_lstm128(args):
             torch.save(network.state_dict(), network_path)
 
 
+def baseline_population_training_lstm128(args):
+    print(f'Sees {torch.cuda.device_count()} CUDA devices')
 
+    key_args = ['num_senders', 'num_receivers', 'num_distractors']
+    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
+    path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
+
+
+    save_path = path + 'saves/'
+    for which_training in ['pretraining', 'finetuning']:
+        for agent in ['sender', 'receiver']:
+            sub_dir = which_training+'_'+agent
+            os.makedirs(save_path+sub_dir)
+
+    writer_tag = args.tag
+    num_distractors = args.num_distractors
+
+    device = torch.device('cuda:0')
+    num_senders = args.num_senders
+    num_receivers = args.num_receivers
+
+    pretraining_lr = args.pretraining_lr
+    receiver_lr = args.finetuning_lr
+    sender_lr = args.finetuning_lr
+
+    batch_size = args.batch_size
+
+    pretraining_epochs = args.pretraining_epochs
+    finetuning_epochs = args.finetuning_epochs
+    repeats_per_epoch = args.repeats_per_epoch
+
+
+
+
+    senders = [agents.lstm_sender_agent(feature_size=2049, text_embedding_size=64, vocab_size=2000, lstm_size=64, lstm_depth=2, feature_embedding_hidden_size=64) for _ in range(num_senders)]
+    pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
+                                  writer_tag=writer_tag, batch_size=batch_size, num_distractors=num_distractors,
+                                  num_episodes=pretraining_epochs, lr=pretraining_lr, device=device)
+    print('Pretraining senders:')
+    senders = [pretrain_sender(sender) for sender in tqdm(senders)]
+
+    receivers = [agents.lstm_receiver_agent(feature_size=2048, text_embedding_size=64, vocab_size=2000, lstm_size=64, lstm_depth=2, feature_embedding_hidden_size=64, readout_hidden_size=32) for _ in range(num_receivers)]
+
+    pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver, num_episodes=pretraining_epochs,
+                                      path=path + 'receiver_pretraining', writer_tag=writer_tag,
+                                      batch_size=batch_size, num_distractors=num_distractors, lr=pretraining_lr, device=device)
+    print('Pretraining receivers:')
+    receivers = [pretrain_receiver(receiver) for receiver in tqdm(receivers)]
+    for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
+        for num, network in enumerate(networks):
+            sub_dir = 'pretraining'+'_'+what_agent+'/'
+            file_name = what_agent + '_' + str(num)+'.pt'
+            network_path = save_path + sub_dir + file_name
+            torch.save(network.state_dict(), network_path)
+
+    print('Interactive finetuning')
+    marl_training.baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path+'finetuning',
+                                                  writer_tag=writer_tag, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device,
+                                                  baseline_polyak=0.99)
+    for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
+        for num, network in enumerate(networks):
+            sub_dir = 'finetuning'+'_'+what_agent+'/'
+            file_name = what_agent + '_' + str(num)+'.pt'
+            network_path = save_path + sub_dir + file_name
+            torch.save(network.state_dict(), network_path)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='scripts running MARL LE experiments')
@@ -349,7 +416,7 @@ if __name__ == '__main__':
     parser.add_argument('--inner_loop_steps', type=int, default=2)
     parser.add_argument('--repeats_per_epoch', type=int, default=1)
 
-    script_dict = {'baseline_population_training_lstm128':baseline_population_training_lstm128, 'tscl_population_training_lstm128':tscl_population_training_lstm128, 'commentary_weighting_training_lstm128':commentary_weighting_training_lstm128, 'commentary_idx_training_lstm128':commentary_idx_training_lstm128}
+    script_dict = {'baseline_population_training_lstm128':baseline_population_training_lstm128, 'baseline_population_training_lstm64':baseline_population_training_lstm64, 'tscl_population_training_lstm128':tscl_population_training_lstm128, 'commentary_weighting_training_lstm128':commentary_weighting_training_lstm128, 'commentary_idx_training_lstm128':commentary_idx_training_lstm128}
 
     args = parser.parse_args()
     print(vars(args))
