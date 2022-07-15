@@ -331,7 +331,7 @@ def baseline_population_training_lstm128(args):
             torch.save(network.state_dict(), network_path)
 
 
-def baseline_population_training_lstm128(args):
+def baseline_population_training_lstm64(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
 
     key_args = ['num_senders', 'num_receivers', 'num_distractors']
