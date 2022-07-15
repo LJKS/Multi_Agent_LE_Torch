@@ -9,4 +9,4 @@
 source $HOME/.bashrc
 spack load miniconda3@4.10.3
 conda activate Multi_Agent_LE_Torch2
-srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment $1 --finetuning_epochs 200 --batch_size $2 --finetuning_lr $3
+srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment $1 --finetuning_epochs 80 --batch_size $2 --finetuning_lr $3
