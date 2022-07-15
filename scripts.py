@@ -12,7 +12,7 @@ from datetime import datetime
 from tqdm import tqdm
 
 def random_desc_string():
-    ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(7))
+    return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(7))
 
 def summarize_key_args(args, key_args):
     summary=''
