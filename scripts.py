@@ -334,7 +334,7 @@ def baseline_population_training_lstm128(args):
 def baseline_population_training_lstm64(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
 
-    key_args = ['num_senders', 'num_receivers', 'num_distractors']
+    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'finetuning_lr', 'batch_size']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
 

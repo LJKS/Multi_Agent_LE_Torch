@@ -1,3 +1,4 @@
 /results/*
 /np_dataset/*
 /__pycache__
+/analyze_hyperparams
