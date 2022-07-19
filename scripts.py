@@ -11,6 +11,27 @@ import string
 from datetime import datetime
 from tqdm import tqdm
 
+def save_hyperparams(path, hyperparams):
+    hyperparam_dict = vars(hyperparams)
+    hyperparameter_lines = [f'{key} : {hyperparam_dict[key]}' for key in hyperparam_dict.keys()]
+    with open(path, 'wt') as file:
+        file.writelines(hyperparameter_lines)
+
+
+
+def string_to_agent(desc_string):
+    agent_dict = {}
+    agent_dict['sender_lstm128'] = lambda: agents.lstm_sender_agent(feature_size=2049, text_embedding_size=128, vocab_size=2000, lstm_size=128,
+                                        lstm_depth=2, feature_embedding_hidden_size=64)
+    agent_dict['sender_lstm64'] = lambda: agents.lstm_sender_agent(feature_size=2049, text_embedding_size=64, vocab_size=2000, lstm_size=64, lstm_depth=2, feature_embedding_hidden_size=64)
+    agent_dict['receiver_lstm128'] = lambda: agents.lstm_receiver_agent(feature_size=2048, text_embedding_size=128, vocab_size=2000, lstm_size=128,
+                                            lstm_depth=2, feature_embedding_hidden_size=64, readout_hidden_size=32)
+    agent_dict['receiver_lstm64'] = lambda: agents.lstm_receiver_agent(feature_size=2048, text_embedding_size=64, vocab_size=2000, lstm_size=64, lstm_depth=2, feature_embedding_hidden_size=64, readout_hidden_size=32)
+
+    agent_func = agent_dict[desc_string]
+    return agent_func()
+
+
 def random_desc_string():
     return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(7))
 
@@ -22,11 +43,13 @@ def summarize_key_args(args, key_args):
     return summary
 
 
-def tscl_population_training_lstm128(args):
+def tscl_population_training(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
-    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'fifo_size', 'epsilon']
+    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'fifo_size', 'epsilon', 'sender', 'receiver']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
+
+    save_hyperparams(path, args)
 
     save_path = path + 'saves/'
     for which_training in ['pretraining', 'finetuning']:
@@ -55,8 +78,7 @@ def tscl_population_training_lstm128(args):
     epsilon = args.epsilon
     fifo_size = args.fifo_size
 
-    senders = [agents.lstm_sender_agent(feature_size=2049, text_embedding_size=128, vocab_size=2000, lstm_size=128,
-                                        lstm_depth=2, feature_embedding_hidden_size=64) for _ in range(num_senders)]
+    senders = [string_to_agent(args.sender) for _ in range(num_senders)]
     pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
                                                                    writer_tag=writer_tag, batch_size=batch_size,
                                                                    num_distractors=num_distractors,
@@ -65,8 +87,7 @@ def tscl_population_training_lstm128(args):
     print('Pretraining senders:')
     senders = [pretrain_sender(sender) for sender in tqdm(senders)]
 
-    receivers = [agents.lstm_receiver_agent(feature_size=2048, text_embedding_size=128, vocab_size=2000, lstm_size=128,
-                                            lstm_depth=2, feature_embedding_hidden_size=64, readout_hidden_size=32) for
+    receivers = [string_to_agent(args.receiver) for
                  _ in range(num_receivers)]
 
     pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver,
@@ -95,11 +116,13 @@ def tscl_population_training_lstm128(args):
             network_path = save_path + sub_dir + file_name
             torch.save(network.state_dict(), network_path)
 
-def commentary_idx_training_lstm128(args):
+def commentary_idx_training(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
-    key_args = ['num_senders', 'num_receivers', 'num_distractors']
+    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'sender', 'receiver']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
+
+    save_hyperparams(path, args)
 
     save_path = path + 'saves/'
     for which_training in ['pretraining', 'finetuning']:
@@ -129,8 +152,7 @@ def commentary_idx_training_lstm128(args):
     inner_loop_steps = args.inner_loop_steps
     commentary_nn = commentary_networks.idx_commentary_network(num_senders, num_receivers, 16, 16)
 
-    senders = [agents.lstm_sender_agent(feature_size=2049, text_embedding_size=128, vocab_size=2000, lstm_size=128,
-                                        lstm_depth=2, feature_embedding_hidden_size=64) for _ in range(num_senders)]
+    senders = [string_to_agent(args.sender) for _ in range(num_senders)]
     pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
                                                                    writer_tag=writer_tag, batch_size=batch_size,
                                                                    num_distractors=num_distractors,
@@ -139,9 +161,7 @@ def commentary_idx_training_lstm128(args):
     print('Pretraining senders:')
     senders = [pretrain_sender(sender) for sender in tqdm(senders)]
 
-    receivers = [agents.lstm_receiver_agent(feature_size=2048, text_embedding_size=128, vocab_size=2000, lstm_size=128,
-                                            lstm_depth=2, feature_embedding_hidden_size=64, readout_hidden_size=32) for
-                 _ in range(num_receivers)]
+    receivers = [string_to_agent(args.receiver) for _ in range(num_receivers)]
 
     pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver,
                                                                          num_episodes=pretraining_epochs,
@@ -181,12 +201,14 @@ def commentary_idx_training_lstm128(args):
     os.makedirs(save_path + 'commentary_network')
     torch.save(commentary_nn.state_dict(), c_network_path)
 
-def commentary_weighting_training_lstm128(args):
+def commentary_weighting_training(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
 
-    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'finetuning_lr', 'batch_size']
+    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'finetuning_lr', 'batch_size', 'sender', 'receiver']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
+
+    save_hyperparams(path, args)
 
     save_path = path + 'saves/'
     for which_training in ['pretraining', 'finetuning']:
@@ -217,8 +239,7 @@ def commentary_weighting_training_lstm128(args):
     commentary_nn = commentary_networks.objects_commentary_network_normalized(num_senders, num_receivers, 64, 2049, 2,
                                                                               2, 64, 4)
 
-    senders = [agents.lstm_sender_agent(feature_size=2049, text_embedding_size=128, vocab_size=2000, lstm_size=128,
-                                        lstm_depth=2, feature_embedding_hidden_size=64) for _ in range(num_senders)]
+    senders = [string_to_agent(args.sender) for _ in range(num_senders)]
     pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
                                                                    writer_tag=writer_tag, batch_size=batch_size,
                                                                    num_distractors=num_distractors,
@@ -227,9 +248,7 @@ def commentary_weighting_training_lstm128(args):
     print('Pretraining senders:')
     senders = [pretrain_sender(sender) for sender in tqdm(senders)]
 
-    receivers = [agents.lstm_receiver_agent(feature_size=2048, text_embedding_size=128, vocab_size=2000, lstm_size=128,
-                                            lstm_depth=2, feature_embedding_hidden_size=64, readout_hidden_size=32) for
-                 _ in range(num_receivers)]
+    receivers = [string_to_agent(args.receiver) for _ in range(num_receivers)]
 
     pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver,
                                                                          num_episodes=pretraining_epochs,
@@ -264,13 +283,14 @@ def commentary_weighting_training_lstm128(args):
     torch.save(commentary_nn.state_dict(), c_network_path)
 
 
-def baseline_population_training_lstm128(args):
+def baseline_population_training(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
 
-    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'finetuning_lr', 'batch_size']
+    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'finetuning_lr', 'batch_size', 'sender', 'receiver']
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
 
+    save_hyperparams(path, args)
 
     save_path = path + 'saves/'
     for which_training in ['pretraining', 'finetuning']:
@@ -298,81 +318,14 @@ def baseline_population_training_lstm128(args):
 
 
 
-    senders = [agents.lstm_sender_agent(feature_size=2049, text_embedding_size=128, vocab_size=2000, lstm_size=128, lstm_depth=2, feature_embedding_hidden_size=64) for _ in range(num_senders)]
+    senders = [string_to_agent(args.sender) for _ in range(num_senders)]
     pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
                                   writer_tag=writer_tag, batch_size=batch_size, num_distractors=num_distractors,
                                   num_episodes=pretraining_epochs, lr=pretraining_lr, device=device)
     print('Pretraining senders:')
     senders = [pretrain_sender(sender) for sender in tqdm(senders)]
 
-    receivers = [agents.lstm_receiver_agent(feature_size=2048, text_embedding_size=128, vocab_size=2000, lstm_size=128, lstm_depth=2, feature_embedding_hidden_size=64, readout_hidden_size=32) for _ in range(num_receivers)]
-
-    pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver, num_episodes=pretraining_epochs,
-                                      path=path + 'receiver_pretraining', writer_tag=writer_tag,
-                                      batch_size=batch_size, num_distractors=num_distractors, lr=pretraining_lr, device=device)
-    print('Pretraining receivers:')
-    receivers = [pretrain_receiver(receiver) for receiver in tqdm(receivers)]
-    for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
-        for num, network in enumerate(networks):
-            sub_dir = 'pretraining'+'_'+what_agent+'/'
-            file_name = what_agent + '_' + str(num)+'.pt'
-            network_path = save_path + sub_dir + file_name
-            torch.save(network.state_dict(), network_path)
-
-    print('Interactive finetuning')
-    marl_training.baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path+'finetuning',
-                                                  writer_tag=writer_tag, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device,
-                                                  baseline_polyak=0.99)
-    for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
-        for num, network in enumerate(networks):
-            sub_dir = 'finetuning'+'_'+what_agent+'/'
-            file_name = what_agent + '_' + str(num)+'.pt'
-            network_path = save_path + sub_dir + file_name
-            torch.save(network.state_dict(), network_path)
-
-
-def baseline_population_training_lstm64(args):
-    print(f'Sees {torch.cuda.device_count()} CUDA devices')
-
-    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'finetuning_lr', 'batch_size']
-    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
-    path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
-
-
-    save_path = path + 'saves/'
-    for which_training in ['pretraining', 'finetuning']:
-        for agent in ['sender', 'receiver']:
-            sub_dir = which_training+'_'+agent
-            os.makedirs(save_path+sub_dir)
-
-    writer_tag = args.tag
-    num_distractors = args.num_distractors
-
-    device = torch.device('cuda:0')
-    num_senders = args.num_senders
-    num_receivers = args.num_receivers
-
-    pretraining_lr = args.pretraining_lr
-    receiver_lr = args.finetuning_lr
-    sender_lr = args.finetuning_lr
-
-    batch_size = args.batch_size
-
-    pretraining_epochs = args.pretraining_epochs
-    finetuning_epochs = args.finetuning_epochs
-    repeats_per_epoch = args.repeats_per_epoch
-
-
-
-
-    senders = [agents.lstm_sender_agent(feature_size=2049, text_embedding_size=64, vocab_size=2000, lstm_size=64, lstm_depth=2, feature_embedding_hidden_size=64) for _ in range(num_senders)]
-    pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
-                                  writer_tag=writer_tag, batch_size=batch_size, num_distractors=num_distractors,
-                                  num_episodes=pretraining_epochs, lr=pretraining_lr, device=device)
-    print('Pretraining senders:')
-    senders = [pretrain_sender(sender) for sender in tqdm(senders)]
-
-    receivers = [agents.lstm_receiver_agent(feature_size=2048, text_embedding_size=64, vocab_size=2000, lstm_size=64, lstm_depth=2, feature_embedding_hidden_size=64, readout_hidden_size=32) for _ in range(num_receivers)]
+    receivers = [string_to_agent(args.receiver) for _ in range(num_receivers)]
 
     pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver, num_episodes=pretraining_epochs,
                                       path=path + 'receiver_pretraining', writer_tag=writer_tag,
@@ -400,8 +353,10 @@ def baseline_population_training_lstm64(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='scripts running MARL LE experiments')
     parser.add_argument('--experiment')
+    parser.add_argument('--sender', type=str, default='sender_lstm64')
+    parser.add_argument('--receiver', type=str, default='receiver_lstm64')
     parser.add_argument('--pretraining_lr', type=float, default=0.0001)
-    parser.add_argument('--finetuning_lr', type=float, default=0.000001)
+    parser.add_argument('--finetuning_lr', type=float, default=0.00001)
     parser.add_argument('--num_senders', type=int, default=2)
     parser.add_argument('--num_receivers', type=int, default=2)
     parser.add_argument('--batch_size', type=int, default=128)

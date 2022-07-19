@@ -9,6 +9,6 @@
 source $HOME/.bashrc
 spack load miniconda3@4.10.3
 conda activate Multi_Agent_LE_Torch2
-srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment baseline_population_training_lstm128 --finetuning_epochs 200 --batch_size 64
+srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment baseline_population_training --finetuning_epochs 200 --batch_size 64 --sender sender_lstm128 --receiver receiver_lstm128
 
 
