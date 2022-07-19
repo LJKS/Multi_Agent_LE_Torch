@@ -9,4 +9,4 @@
 source $HOME/.bashrc
 spack load miniconda3@4.10.3
 conda activate Multi_Agent_LE_Torch2
-srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment tscl_population_training_lstm128 --batch_size 4096 --num_receivers 5 --num_senders 5 --repeats_per_epoch 25
+srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment tscl_population_training --batch_size 128 --num_receivers 5 --num_senders 5 --repeats_per_epoch 25
