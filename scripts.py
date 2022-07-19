@@ -371,7 +371,7 @@ if __name__ == '__main__':
     parser.add_argument('--inner_loop_steps', type=int, default=2)
     parser.add_argument('--repeats_per_epoch', type=int, default=1)
 
-    script_dict = {'baseline_population_training_lstm128':baseline_population_training_lstm128, 'baseline_population_training_lstm64':baseline_population_training_lstm64, 'tscl_population_training_lstm128':tscl_population_training_lstm128, 'commentary_weighting_training_lstm128':commentary_weighting_training_lstm128, 'commentary_idx_training_lstm128':commentary_idx_training_lstm128}
+    script_dict = {'baseline_population_training':baseline_population_training, 'tscl_population_training':tscl_population_training, 'commentary_weighting_training':commentary_weighting_training, 'commentary_idx_training':commentary_idx_training}
 
     args = parser.parse_args()
     print(vars(args))
