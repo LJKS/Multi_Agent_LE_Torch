@@ -14,7 +14,7 @@ from tqdm import tqdm
 def save_hyperparams(path, hyperparams):
     hyperparam_dict = vars(hyperparams)
     hyperparameter_lines = [f'{key} : {hyperparam_dict[key]}' for key in hyperparam_dict.keys()]
-    with open(path, 'wt') as file:
+    with open(path + 'hyperparameters.txt', 'w') as file:
         file.writelines(hyperparameter_lines)
 
 
@@ -49,13 +49,13 @@ def tscl_population_training(args):
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
 
-    save_hyperparams(path, args)
-
     save_path = path + 'saves/'
     for which_training in ['pretraining', 'finetuning']:
         for agent in ['sender', 'receiver']:
             sub_dir = which_training + '_' + agent
             os.makedirs(save_path + sub_dir)
+
+    save_hyperparams(path, args)
 
     writer_tag = args.tag
     num_distractors = args.num_distractors
@@ -122,13 +122,13 @@ def commentary_idx_training(args):
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
 
-    save_hyperparams(path, args)
-
     save_path = path + 'saves/'
     for which_training in ['pretraining', 'finetuning']:
         for agent in ['sender', 'receiver']:
             sub_dir = which_training + '_' + agent
             os.makedirs(save_path + sub_dir)
+
+    save_hyperparams(path, args)
 
     writer_tag = args.tag
     num_distractors = args.num_distractors
@@ -208,13 +208,13 @@ def commentary_weighting_training(args):
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
 
-    save_hyperparams(path, args)
-
     save_path = path + 'saves/'
     for which_training in ['pretraining', 'finetuning']:
         for agent in ['sender', 'receiver']:
             sub_dir = which_training + '_' + agent
             os.makedirs(save_path + sub_dir)
+
+    save_hyperparams(path, args)
 
     writer_tag = args.tag
     num_distractors = args.num_distractors
@@ -290,13 +290,13 @@ def baseline_population_training(args):
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
 
-    save_hyperparams(path, args)
-
     save_path = path + 'saves/'
     for which_training in ['pretraining', 'finetuning']:
         for agent in ['sender', 'receiver']:
             sub_dir = which_training+'_'+agent
             os.makedirs(save_path+sub_dir)
+
+    save_hyperparams(path, args)
 
     writer_tag = args.tag
     num_distractors = args.num_distractors
