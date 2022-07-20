@@ -361,7 +361,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_receivers', type=int, default=2)
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--pretraining_epochs', type=int, default=25)
-    parser.add_argument('--finetuning_epochs', type=int, default=400)
+    parser.add_argument('--finetuning_epochs', type=int, default=200)
     parser.add_argument('--tag', default='no_tag_given')
     parser.add_argument('--num_distractors', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=4)
