@@ -1,3 +1,5 @@
+import pickle
+
 import torch
 import data
 import agents
@@ -94,12 +96,18 @@ def prob_mask(tokens, eos_token=4):
     return eos_tokens
 
 
-def baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, writer_tag, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99):
+def baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99, lr_decay=1.0, save_every=10, load_params=False):
+    #indexing here will generally be first sender index, then receiver index for anything that has alg_params['num_senders'] x alg_params['num_receivers'] elements arranged in a 2d grid
 
-    #indexing here will generally be first sender index, then receiver index for anything that has num_senders x num_receivers elements arranged in a 2d grid
+    if not load_params:
+        alg_params = {}
+        alg_params['num_senders'] = len(senders)
+        alg_params['num_receivers'] = len(receivers)
+        alg_params['episode'] = 0
+    else:
+        with open(path + f'/saves/finetune/alg_params.pickle', 'rb') as file:
+            alg_params = pickle.load(file)
 
-    num_senders = len(senders)
-    num_receivers = len(receivers)
 
     [receiver.to(device) for receiver in receivers]
     [receiver.train() for receiver in receivers]
@@ -109,12 +117,33 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
     optimizers_receiver = [torch.optim.Adam(receiver.parameters(), lr=receiver_lr) for receiver in receivers]
     optimizers_sender = [torch.optim.Adam(sender.parameters(), lr=sender_lr) for sender in senders]
 
-    schedulers_receiver = [torch.optim.lr_scheduler.StepLR(optimizer_receiver, 1.0, gamma=0.95) for optimizer_receiver in optimizers_receiver]
-    schedulers_sender = [torch.optim.lr_scheduler.StepLR(optimizer_sender, 1.0, gamma=0.95) for optimizer_sender in optimizers_sender]
+    schedulers_receiver = [torch.optim.lr_scheduler.StepLR(optimizer_receiver, 1.0, gamma=lr_decay) for optimizer_receiver in optimizers_receiver]
+    schedulers_sender = [torch.optim.lr_scheduler.StepLR(optimizer_sender, 1.0, gamma=lr_decay) for optimizer_sender in optimizers_sender]
 
     criterion = torch.nn.CrossEntropyLoss(reduction='none')
+    baselines = torch.zeros(size=(alg_params['num_senders'],alg_params['num_receivers'])).to(device=device)
 
-    baselines = torch.zeros(size=(num_senders,num_receivers)).to(device=device)
+    # if loading from old save:
+    if load_params:
+        episode = alg_params['episode']
+        # All Models
+        for i, sender_model in enumerate(senders):
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_sender_{i}.pt')
+            sender_model.load_state_dict(state_dict)
+        for i, receiver_model in enumerate(receivers):
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_receiver_{i}.pt')
+            receiver_model.load_state_dict(state_dict)
+        for i, optimizer in enumerate(optimizers_sender):
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_optimizersender_{i}.pt')
+            optimizer.load_state_dict(state_dict)
+        for i, optimizer in enumerate(optimizers_receiver):
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_optimizerreceiver_{i}.pt')
+            optimizer.load_state_dict(state_dict)
+        for i, scheduler in enumerate(schedulers_sender):
+            torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_schedulersender_{i}.pt')
+        for i, scheduler in enumerate(schedulers_receiver):
+            torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_schedulerreceiver_{i}.pt')
+        baselines = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_baselines.pt')
 
     (train_ds, test_ds), vocab = data.load_prepared_coco_data()
 
@@ -131,18 +160,18 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
     )
     #metrics
     writer = SummaryWriter(path)
-    training_loss_grid = [[torchmetrics.MeanMetric() for _ in range(num_receivers)] for _ in range(num_senders)]
-    training_acc_grid = [[torchmetrics.Accuracy() for _ in range(num_receivers)] for _ in range(num_senders)]
-    test_loss_grid = [[torchmetrics.MeanMetric() for _ in range(num_receivers)] for _ in range(num_senders)]
-    test_acc_grid = [[torchmetrics.Accuracy() for _ in range(num_receivers)] for _ in range(num_senders)]
-    entropies = [torchmetrics.MeanMetric() for _ in range(num_senders)]
+    training_loss_grid = [[torchmetrics.MeanMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    training_acc_grid = [[torchmetrics.Accuracy() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    test_loss_grid = [[torchmetrics.MeanMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    test_acc_grid = [[torchmetrics.Accuracy() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    entropies = [torchmetrics.MeanMetric() for _ in range(alg_params['num_senders'])]
 
-    for episode in (p_bar := tqdm(range(num_episodes))):
+    for alg_params['episode'] in (p_bar := tqdm(range(alg_params['episode'], num_episodes))):
 
         for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_train, repeats_per_epoch):
 
-            receiver_idx = random.randrange(0, num_receivers)
-            sender_idx = random.randrange(0, num_senders)
+            receiver_idx = random.randrange(0, alg_params['num_receivers'])
+            sender_idx = random.randrange(0, alg_params['num_senders'])
             sender = senders[sender_idx]
             receiver = receivers[receiver_idx]
             receiver.train()
@@ -193,8 +222,8 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
 
 
         for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_test, repeats_per_epoch):
-            receiver_idx = random.randrange(0, num_receivers)
-            sender_idx = random.randrange(0, num_senders)
+            receiver_idx = random.randrange(0, alg_params['num_receivers'])
+            sender_idx = random.randrange(0, alg_params['num_senders'])
             sender = senders[sender_idx]
             receiver = receivers[receiver_idx]
             receiver.eval()
@@ -228,12 +257,12 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
         test_loss_result = []
 
         write_dict = {}
-        for sender_idx in range(num_senders):
+        for sender_idx in range(alg_params['num_senders']):
             episode_entropy = entropies[sender_idx].compute()
             entropies[sender_idx].reset()
             write_dict[f'entropy_sender_{sender_idx}'] = episode_entropy
             entropy_results.append(episode_entropy)
-            for receiver_idx in range(num_receivers):
+            for receiver_idx in range(alg_params['num_receivers']):
                 training_loss = training_loss_grid[sender_idx][receiver_idx]
                 episode_training_loss = training_loss.compute()
                 training_loss.reset()
@@ -266,9 +295,30 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
                            tag_scalar_dict=write_dict,
                            global_step=episode)
 
+        # save and everything needed to restart!
+        if alg_params['episode']%save_every==0:
+            with open(path + f'/saves/finetune/alg_params.pickle', 'wb') as file:
+                pickle.dump(alg_params, file)
+            episode = alg_params['episode']
+            #All Models
+            for i, sender_model in enumerate(senders):
+                torch.save(sender_model.state_dict(), path+f'/saves/finetune/episode_{alg_params[episode]}_sender_{i}.pt')
+            for i, receiver_model in enumerate(receivers):
+                torch.save(receiver_model.state_dict(), path+f'/saves/finetune/episode_{alg_params[episode]}_receiver_{i}.pt')
+            for i, optimizer in enumerate(optimizers_sender):
+                torch.save(optimizer.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_optimizersender_{i}.pt')
+            for i, optimizer in enumerate(optimizers_receiver):
+                torch.save(optimizer.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_optimizerreceiver_{i}.pt')
+            for i, scheduler in enumerate(schedulers_sender):
+                torch.save(scheduler.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_schedulersender_{i}.pt')
+            for i, scheduler in enumerate(schedulers_receiver):
+                torch.save(scheduler.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_schedulerreceiver_{i}.pt')
+            torch.save(baselines, path + f'/saves/finetune/episode_{alg_params[episode]}_baselines.pt')
+
     writer.flush()
 
 def idx_commentary_training_interactive_only(senders, receivers, commentary_network, receiver_lr, sender_lr, commentary_lr, num_distractors, path, writer_tag, num_inner_loop_steps=2, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99):
+    #TODO: REWORK!
     # indexing here will generally be first sender index, then receiver index for anything that has num_senders x num_receivers elements arranged in a 2d grid
 
     num_senders = len(senders)
@@ -831,12 +881,19 @@ def weighted_softmax_commentary_training_interactive_only(senders, receivers, co
 
     writer.flush()
 
-def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, writer_tag, epsilon=0.1, fifo_size=10, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99):
+def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, epsilon=0.1, fifo_size=10, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99, lr_decay=1.0, save_every=10, load_params=False):
 
     #indexing here will generally be first sender index, then receiver index for anything that has num_senders x num_receivers elements arranged in a 2d grid
-
-    num_senders = len(senders)
-    num_receivers = len(receivers)
+    if not load_params:
+        alg_params = {}
+        alg_params['num_senders'] = len(senders)
+        assert len(senders) == alg_params['num_senders']
+        alg_params['num_receivers'] = len(receivers)
+        assert len(receivers == alg_params['num_receivers'])
+        alg_params['episode'] = 0
+    else:
+        with open(path + f'/saves/finetune/alg_params.pickle', 'rb') as file:
+            alg_params = pickle.load(file)
 
     [receiver.to(device) for receiver in receivers]
     [receiver.train() for receiver in receivers]
@@ -846,12 +903,37 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
     optimizers_receiver = [torch.optim.Adam(receiver.parameters(), lr=receiver_lr) for receiver in receivers]
     optimizers_sender = [torch.optim.Adam(sender.parameters(), lr=sender_lr) for sender in senders]
 
-    schedulers_receiver = [torch.optim.lr_scheduler.StepLR(optimizer_receiver, 1.0, gamma=0.95) for optimizer_receiver in optimizers_receiver]
-    schedulers_sender = [torch.optim.lr_scheduler.StepLR(optimizer_sender, 1.0, gamma=0.95) for optimizer_sender in optimizers_sender]
+    schedulers_receiver = [torch.optim.lr_scheduler.StepLR(optimizer_receiver, 1.0, gamma=lr_decay) for optimizer_receiver in optimizers_receiver]
+    schedulers_sender = [torch.optim.lr_scheduler.StepLR(optimizer_sender, 1.0, gamma=lr_decay) for optimizer_sender in optimizers_sender]
 
     criterion = torch.nn.CrossEntropyLoss(reduction='none')
 
-    baselines = torch.zeros(size=(num_senders,num_receivers)).to(device=device)
+    baselines = torch.zeros(size=(alg_params['num_senders'],alg_params['num_receivers'])).to(device=device)
+
+    tscl = utils.tscl_helper(alg_params['num_senders'], alg_params['num_receivers'], fifo_size=fifo_size)
+
+    if load_params:
+        episode = alg_params['episode']
+        # All Models
+        for i, sender_model in enumerate(senders):
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_sender_{i}.pt')
+            sender_model.load_state_dict(state_dict)
+        for i, receiver_model in enumerate(receivers):
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_receiver_{i}.pt')
+            receiver_model.load_state_dict(state_dict)
+        for i, optimizer in enumerate(optimizers_sender):
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_optimizersender_{i}.pt')
+            optimizer.load_state_dict(state_dict)
+        for i, optimizer in enumerate(optimizers_receiver):
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_optimizerreceiver_{i}.pt')
+            optimizer.load_state_dict(state_dict)
+        for i, scheduler in enumerate(schedulers_sender):
+            torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_schedulersender_{i}.pt')
+        for i, scheduler in enumerate(schedulers_receiver):
+            torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_schedulerreceiver_{i}.pt')
+        baselines = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_baselines.pt')
+        with open(path + f'/saves/finetune/episode_{alg_params[episode]}_tscl.pickle', 'rb') as file:
+            tscl = pickle.load(file)
 
     (train_ds, test_ds), vocab = data.load_prepared_coco_data()
 
@@ -868,15 +950,14 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
     )
     #metrics
     writer = SummaryWriter(path)
-    training_loss_grid = [[torchmetrics.MeanMetric() for _ in range(num_receivers)] for _ in range(num_senders)]
-    training_acc_grid = [[torchmetrics.Accuracy() for _ in range(num_receivers)] for _ in range(num_senders)]
-    test_loss_grid = [[torchmetrics.MeanMetric() for _ in range(num_receivers)] for _ in range(num_senders)]
-    test_acc_grid = [[torchmetrics.Accuracy() for _ in range(num_receivers)] for _ in range(num_senders)]
-    entropies = [torchmetrics.MeanMetric() for _ in range(num_senders)]
+    training_loss_grid = [[torchmetrics.MeanMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    training_acc_grid = [[torchmetrics.Accuracy() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    test_loss_grid = [[torchmetrics.MeanMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    test_acc_grid = [[torchmetrics.Accuracy() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    entropies = [torchmetrics.MeanMetric() for _ in range(alg_params['num_senders'])]
 
-    tscl = utils.tscl_helper(num_senders, num_receivers, fifo_size=fifo_size)
 
-    for episode in (p_bar := tqdm(range(num_episodes))):
+    for alg_params['episode'] in (p_bar := tqdm(range(alg_params['episode'], num_episodes))):
 
         for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_train, repeats_per_epoch):
             sender_idx, receiver_idx = tscl.sample_epsilon_greedy(epsilon=epsilon)
@@ -932,8 +1013,8 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
 
         for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_test, repeats_per_epoch):
 
-            receiver_idx = random.randrange(0, num_receivers)
-            sender_idx = random.randrange(0, num_senders)
+            receiver_idx = random.randrange(0, alg_params['num_receivers'])
+            sender_idx = random.randrange(0, alg_params['num_senders'])
             sender = senders[sender_idx]
             receiver = receivers[receiver_idx]
             receiver.eval()
@@ -967,12 +1048,12 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
         test_loss_result = []
 
         write_dict = {}
-        for sender_idx in range(num_senders):
+        for sender_idx in range(alg_params['num_senders']):
             episode_entropy = entropies[sender_idx].compute()
             entropies[sender_idx].reset()
             write_dict[f'entropy_sender_{sender_idx}'] = episode_entropy
             entropy_results.append(episode_entropy)
-            for receiver_idx in range(num_receivers):
+            for receiver_idx in range(alg_params['num_receivers']):
                 training_loss = training_loss_grid[sender_idx][receiver_idx]
                 episode_training_loss = training_loss.compute()
                 training_loss.reset()
@@ -1008,7 +1089,29 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
             f'Train: L{np.mean(training_loss_result) :.3e} / ACC{np.mean(training_acc_result) :.3e} || Test: L{np.mean(test_loss_result) :.3e} / ACC{np.mean(test_acc_result) :.3e}')
         writer.add_scalars(main_tag=writer_tag,
                            tag_scalar_dict=write_dict,
-                           global_step=episode)
+                           global_step=alg_params['episode'])
+
+        # save and everything needed to restart!
+        if alg_params['episode']%save_every==0:
+            with open(path + f'/saves/finetune/alg_params.pickle', 'wb') as file:
+                pickle.dump(alg_params, file)
+            episode = alg_params['episode']
+            with open(path + f'/saves/finetune/episode_{alg_params[episode]}_tscl.pickle', 'wb') as file:
+                pickle.dump(tscl, file)
+            #All Models
+            for i, sender_model in enumerate(senders):
+                torch.save(sender_model.state_dict(), path+f'/saves/finetune/episode_{alg_params[episode]}_sender_{i}.pt')
+            for i, receiver_model in enumerate(receivers):
+                torch.save(receiver_model.state_dict(), path+f'/saves/finetune/episode_{alg_params[episode]}_receiver_{i}.pt')
+            for i, optimizer in enumerate(optimizers_sender):
+                torch.save(optimizer.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_optimizersender_{i}.pt')
+            for i, optimizer in enumerate(optimizers_receiver):
+                torch.save(optimizer.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_optimizerreceiver_{i}.pt')
+            for i, scheduler in enumerate(schedulers_sender):
+                torch.save(scheduler.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_schedulersender_{i}.pt')
+            for i, scheduler in enumerate(schedulers_receiver):
+                torch.save(scheduler.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_schedulerreceiver_{i}.pt')
+            torch.save(baselines, path + f'/saves/finetune/episode_{alg_params[episode]}_baselines.pt')
 
     writer.flush()
 

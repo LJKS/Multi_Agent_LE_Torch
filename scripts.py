@@ -8,10 +8,13 @@ import os
 import torch
 import random
 import string
+import pickle
 from datetime import datetime
 from tqdm import tqdm
 
 def save_hyperparams(path, hyperparams):
+    with open(path + 'hyperparameters.pickle', 'wb') as file:
+        pickle.dump(hyperparams, file)
     hyperparam_dict = vars(hyperparams)
     hyperparameter_lines = [f'{key} : {hyperparam_dict[key]}' for key in hyperparam_dict.keys()]
     with open(path + 'hyperparameters.txt', 'w') as file:
@@ -42,79 +45,92 @@ def summarize_key_args(args, key_args):
         summary = summary+'--'+key+'_'+str(args[key])
     return summary
 
+def get_run_date(run_key, extend):
+    if not extend:
+        run_date = datetime.now().strftime("%m_%d%H:%M")
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/results/rundocs/{run_key}.pickle', 'wb') as file:
+            pickle.dump(run_date, file)
+    if extend:
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/results/rundocs/{run_key}.pickle', 'rb') as file:
+            run_date = pickle.load(file)
+    return run_date
+
+def create_exp_dirs(path):
+    save_path = path + 'saves/'
+    for which_training in ['pretraining', 'finetune']:
+        os.makedirs(save_path + which_training)
+    os.makedirs(path + 'results')
+
+def save_pretrained_models(senders, receivers, path):
+    for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
+        for num, network in enumerate(networks):
+            file_name = what_agent + '_' + str(num) + '.pt'
+            network_path = path + 'saves/' + 'pretraining/' + file_name
+            torch.save(network.state_dict(), network_path)
+
 
 def tscl_population_training(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
     key_args = ['num_senders', 'num_receivers', 'num_distractors', 'fifo_size', 'epsilon', 'sender', 'receiver']
-    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
+
+    run_date = get_run_date(args.run_key, args.extend)
+    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{run_date + args.run_key}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
 
     save_path = path + 'saves/'
-    for which_training in ['pretraining', 'finetuning']:
-        for agent in ['sender', 'receiver']:
-            sub_dir = which_training + '_' + agent
-            os.makedirs(save_path + sub_dir)
-
-    save_hyperparams(path, args)
-
-    writer_tag = args.tag
     num_distractors = args.num_distractors
 
     device = torch.device('cuda:0')
     num_senders = args.num_senders
     num_receivers = args.num_receivers
-
     pretraining_lr = args.pretraining_lr
     receiver_lr = args.finetuning_lr
     sender_lr = args.finetuning_lr
-
     batch_size = args.batch_size
 
     pretraining_epochs = args.pretraining_epochs
     finetuning_epochs = args.finetuning_epochs
 
-    repeats_per_epoch= args.repeats_per_epoch
+    repeats_per_epoch = args.repeats_per_epoch
 
     epsilon = args.epsilon
     fifo_size = args.fifo_size
 
-    senders = [string_to_agent(args.sender) for _ in range(num_senders)]
-    pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
-                                                                   writer_tag=writer_tag, batch_size=batch_size,
-                                                                   num_distractors=num_distractors,
-                                                                   num_episodes=pretraining_epochs, lr=pretraining_lr,
-                                                                   device=device)
-    print('Pretraining senders:')
-    senders = [pretrain_sender(sender) for sender in tqdm(senders)]
+    extend = args.extend
+    lr_decay = args.lr_decay
+    save_every = args.save_every
 
+    senders = [string_to_agent(args.sender) for _ in range(num_senders)]
     receivers = [string_to_agent(args.receiver) for
                  _ in range(num_receivers)]
 
-    pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver,
-                                                                         num_episodes=pretraining_epochs,
-                                                                         path=path + 'receiver_pretraining',
-                                                                         writer_tag=writer_tag,
-                                                                         batch_size=batch_size,
-                                                                         num_distractors=num_distractors,
-                                                                         lr=pretraining_lr, device=device)
-    print('Pretraining receivers:')
-    receivers = [pretrain_receiver(receiver) for receiver in tqdm(receivers)]
-    for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
-        for num, network in enumerate(networks):
-            sub_dir = 'pretraining' + '_' + what_agent + '/'
-            file_name = what_agent + '_' + str(num) + '.pt'
-            network_path = save_path + sub_dir + file_name
-            torch.save(network.state_dict(), network_path)
+    if not args.extend:
+        create_exp_dirs(path)
+        save_hyperparams(path, args)
+
+        pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
+                                                                       writer_tag=writer_tag, batch_size=batch_size,
+                                                                       num_distractors=num_distractors,
+                                                                       num_episodes=pretraining_epochs, lr=pretraining_lr,
+                                                                       device=device)
+        print('Pretraining senders:')
+        senders = [pretrain_sender(sender) for sender in tqdm(senders)]
+
+        pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver,
+                                                                             num_episodes=pretraining_epochs,
+                                                                             path=path + 'receiver_pretraining',
+                                                                             writer_tag=writer_tag,
+                                                                             batch_size=batch_size,
+                                                                             num_distractors=num_distractors,
+                                                                             lr=pretraining_lr, device=device)
+        print('Pretraining receivers:')
+        receivers = [pretrain_receiver(receiver) for receiver in tqdm(receivers)]
+        save_pretrained_models(senders, receivers, path)
+
 
     print('Interactive finetuning')
-    marl_training.tscl_multiagent_training_interactive_only(senders=senders, receivers=receivers, receiver_lr=receiver_lr, sender_lr=sender_lr, num_distractors=num_distractors, path=path+'finetuning', writer_tag=writer_tag, fifo_size=fifo_size, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, epsilon=epsilon, device=device)
+    marl_training.tscl_multiagent_training_interactive_only(senders=senders, receivers=receivers, receiver_lr=receiver_lr, sender_lr=sender_lr, num_distractors=num_distractors, path=path, epsilon=epsilon, fifo_size=fifo_size, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device, lr_decay=lr_decay, save_every=save_every, load_params=extend)
 
-    for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
-        for num, network in enumerate(networks):
-            sub_dir = 'finetuning' + '_' + what_agent + '/'
-            file_name = what_agent + '_' + str(num) + '.pt'
-            network_path = save_path + sub_dir + file_name
-            torch.save(network.state_dict(), network_path)
 
 def commentary_idx_training(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
@@ -287,18 +303,11 @@ def baseline_population_training(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
 
     key_args = ['num_senders', 'num_receivers', 'num_distractors', 'finetuning_lr', 'batch_size', 'sender', 'receiver']
-    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")+random_desc_string()}/'
+
+    run_date = get_run_date(args.run_key, args.extend)
+
+    path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{run_date+args.run_key}/'
     path = os.path.dirname(os.path.abspath(__file__)) + '/' + path
-
-    save_path = path + 'saves/'
-    for which_training in ['pretraining', 'finetuning']:
-        for agent in ['sender', 'receiver']:
-            sub_dir = which_training+'_'+agent
-            os.makedirs(save_path+sub_dir)
-
-    save_hyperparams(path, args)
-
-    writer_tag = args.tag
     num_distractors = args.num_distractors
 
     device = torch.device('cuda:0')
@@ -314,41 +323,37 @@ def baseline_population_training(args):
     pretraining_epochs = args.pretraining_epochs
     finetuning_epochs = args.finetuning_epochs
     repeats_per_epoch = args.repeats_per_epoch
-
-
-
+    extend = args.extend
+    lr_decay = args.lr_decay
+    save_every = args.save_every
 
     senders = [string_to_agent(args.sender) for _ in range(num_senders)]
-    pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
-                                  writer_tag=writer_tag, batch_size=batch_size, num_distractors=num_distractors,
-                                  num_episodes=pretraining_epochs, lr=pretraining_lr, device=device)
-    print('Pretraining senders:')
-    senders = [pretrain_sender(sender) for sender in tqdm(senders)]
-
     receivers = [string_to_agent(args.receiver) for _ in range(num_receivers)]
 
-    pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver, num_episodes=pretraining_epochs,
-                                      path=path + 'receiver_pretraining', writer_tag=writer_tag,
-                                      batch_size=batch_size, num_distractors=num_distractors, lr=pretraining_lr, device=device)
-    print('Pretraining receivers:')
-    receivers = [pretrain_receiver(receiver) for receiver in tqdm(receivers)]
-    for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
-        for num, network in enumerate(networks):
-            sub_dir = 'pretraining'+'_'+what_agent+'/'
-            file_name = what_agent + '_' + str(num)+'.pt'
-            network_path = save_path + sub_dir + file_name
-            torch.save(network.state_dict(), network_path)
+    if not args.extend:
+        create_exp_dirs(path)
+
+        save_hyperparams(path, args)
+
+        pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
+                                      writer_tag=writer_tag, batch_size=batch_size, num_distractors=num_distractors,
+                                      num_episodes=pretraining_epochs, lr=pretraining_lr, device=device)
+        print('Pretraining senders:')
+        senders = [pretrain_sender(sender) for sender in tqdm(senders)]
+
+
+        pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver, num_episodes=pretraining_epochs,
+                                          path=path + 'receiver_pretraining', writer_tag=writer_tag,
+                                          batch_size=batch_size, num_distractors=num_distractors, lr=pretraining_lr, device=device)
+        print('Pretraining receivers:')
+        receivers = [pretrain_receiver(receiver) for receiver in tqdm(receivers)]
+        save_pretrained_models(senders, receivers, path)
+
+
+
 
     print('Interactive finetuning')
-    marl_training.baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path+'finetuning',
-                                                  writer_tag=writer_tag, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device,
-                                                  baseline_polyak=0.99)
-    for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
-        for num, network in enumerate(networks):
-            sub_dir = 'finetuning'+'_'+what_agent+'/'
-            file_name = what_agent + '_' + str(num)+'.pt'
-            network_path = save_path + sub_dir + file_name
-            torch.save(network.state_dict(), network_path)
+    marl_training.baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device, baseline_polyak=0.99, lr_decay=lr_decay, save_every=save_every, load_params=extend)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='scripts running MARL LE experiments')
@@ -362,7 +367,6 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--pretraining_epochs', type=int, default=25)
     parser.add_argument('--finetuning_epochs', type=int, default=200)
-    parser.add_argument('--tag', default='no_tag_given')
     parser.add_argument('--num_distractors', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--fifo_size', type=int, default=10)
@@ -370,10 +374,21 @@ if __name__ == '__main__':
     parser.add_argument('--commentary_lr', type=float, default=0.00001)
     parser.add_argument('--inner_loop_steps', type=int, default=2)
     parser.add_argument('--repeats_per_epoch', type=int, default=1)
+    parser.add_argument('--run_key', type=str, default='default')
+    parser.add_argument('--extend', type=bool, default=False)
+    parser.add_argument('--lr_decay', type=float, default=1.0)
+    parser.add_argument('--save_every', type=int, default=10)
 
     script_dict = {'baseline_population_training':baseline_population_training, 'tscl_population_training':tscl_population_training, 'commentary_weighting_training':commentary_weighting_training, 'commentary_idx_training':commentary_idx_training}
-
     args = parser.parse_args()
     print(vars(args))
+
+    #make sure the run is legit, i.e. if a run is to be extended, the run does already exist, if start from scratch make sure a new key is used!
+    os.makedirs(os.path.dirname(os.path.abspath(__file__)) + '/results/rundocs')
+    if args.extend:
+        assert os.path.isdir(f'{os.path.dirname(os.path.abspath(__file__))}/results/{args.run_key}.pickle')
+    else:
+        assert not os.path.isdir(f'{os.path.dirname(os.path.abspath(__file__))}/results/{args.run_key}.pickle')
+    #run the script!
     script_dict[args.experiment](args)
 

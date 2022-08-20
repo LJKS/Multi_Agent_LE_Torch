@@ -2,3 +2,4 @@
 /np_dataset/*
 /__pycache__
 /analyze_hyperparams
+/analyze_population_results
