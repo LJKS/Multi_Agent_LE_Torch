@@ -18,6 +18,8 @@ import utils
 
 TEST_VAL_SPLIT = 0.5 #of the designated 'test' data we treat the first 'TEST_VAL_SPLIT' as test data by default, the rest as validation
 #copied utils from training
+
+
 def target_distractor_encode_data(features_batch, target_idx_batch, num_classes):
     onehot_encoding = F.one_hot(target_idx_batch, num_classes=num_classes)
     onehot_encoding = torch.swapaxes(onehot_encoding, 1,2) # (batchsize, 1, numtargets+distracts) TO (batchsize, numtargets+distracts, 1)
@@ -96,17 +98,18 @@ def prob_mask(tokens, eos_token=4):
     return eos_tokens
 
 
-def baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99, lr_decay=1.0, save_every=10, load_params=False):
+def baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99, lr_decay=1.0, entropy_factor=0.0, save_every=10, load_params=False):
     #indexing here will generally be first sender index, then receiver index for anything that has alg_params['num_senders'] x alg_params['num_receivers'] elements arranged in a 2d grid
 
     if not load_params:
         alg_params = {}
         alg_params['num_senders'] = len(senders)
         alg_params['num_receivers'] = len(receivers)
-        alg_params['episode'] = 0
+        alg_params['episode'] = 1
     else:
         with open(path + f'/saves/finetune/alg_params.pickle', 'rb') as file:
             alg_params = pickle.load(file)
+            alg_params['episode'] = alg_params['episode']
 
 
     [receiver.to(device) for receiver in receivers]
@@ -125,25 +128,25 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
 
     # if loading from old save:
     if load_params:
-        episode = alg_params['episode']
         # All Models
         for i, sender_model in enumerate(senders):
-            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_sender_{i}.pt')
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_sender_{i}.pt')
             sender_model.load_state_dict(state_dict)
         for i, receiver_model in enumerate(receivers):
-            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_receiver_{i}.pt')
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_receiver_{i}.pt')
             receiver_model.load_state_dict(state_dict)
         for i, optimizer in enumerate(optimizers_sender):
-            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_optimizersender_{i}.pt')
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_optimizersender_{i}.pt')
             optimizer.load_state_dict(state_dict)
         for i, optimizer in enumerate(optimizers_receiver):
-            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_optimizerreceiver_{i}.pt')
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_optimizerreceiver_{i}.pt')
             optimizer.load_state_dict(state_dict)
         for i, scheduler in enumerate(schedulers_sender):
-            torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_schedulersender_{i}.pt')
+            torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_schedulersender_{i}.pt')
         for i, scheduler in enumerate(schedulers_receiver):
-            torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_schedulerreceiver_{i}.pt')
-        baselines = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_baselines.pt')
+            torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_schedulerreceiver_{i}.pt')
+        baselines = torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_baselines.pt')
+        alg_params['episode'] = alg_params['episode'] + 1  # save was at end of episode, now advance one episode!
 
     (train_ds, test_ds), vocab = data.load_prepared_coco_data()
 
@@ -166,7 +169,7 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
     test_acc_grid = [[torchmetrics.Accuracy() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
     entropies = [torchmetrics.MeanMetric() for _ in range(alg_params['num_senders'])]
 
-    for alg_params['episode'] in (p_bar := tqdm(range(alg_params['episode'], num_episodes))):
+    for alg_params['episode'] in (p_bar := tqdm(range(alg_params['episode'], alg_params['episode']+num_episodes))):
 
         for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_train, repeats_per_epoch):
 
@@ -205,7 +208,8 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
             log_p_mask = prob_mask(seq)
             log_p = log_p*log_p_mask
             log_p = torch.sum(log_p, dim=1)
-            value = -loss.detach()
+            print(log_p.shape, loss.shape, 'training shapes!')
+            value = (-loss - entropy_factor*log_p).detach()
             baselined_value = value - baselines[sender_idx, receiver_idx]
             sender_reinforce_objective = log_p*baselined_value
             sender_loss = torch.mean(-sender_reinforce_objective)
@@ -291,9 +295,9 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
 
         p_bar.set_description(
             f'Train: L{np.mean(training_loss_result) :.3e} / ACC{np.mean(training_acc_result) :.3e} || Test: L{np.mean(test_loss_result) :.3e} / ACC{np.mean(test_acc_result) :.3e}')
-        writer.add_scalars(main_tag=writer_tag,
+        writer.add_scalars(main_tag='todotag',
                            tag_scalar_dict=write_dict,
-                           global_step=episode)
+                           global_step=alg_params['episode'])
 
         # save and everything needed to restart!
         if alg_params['episode']%save_every==0:
@@ -302,18 +306,19 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
             episode = alg_params['episode']
             #All Models
             for i, sender_model in enumerate(senders):
-                torch.save(sender_model.state_dict(), path+f'/saves/finetune/episode_{alg_params[episode]}_sender_{i}.pt')
+                a = sender_model.state_dict()
+                torch.save(sender_model.state_dict(), path+f'/saves/finetune/episode_{alg_params["episode"]}_sender_{i}.pt')
             for i, receiver_model in enumerate(receivers):
-                torch.save(receiver_model.state_dict(), path+f'/saves/finetune/episode_{alg_params[episode]}_receiver_{i}.pt')
+                torch.save(receiver_model.state_dict(), path+f'/saves/finetune/episode_{alg_params["episode"]}_receiver_{i}.pt')
             for i, optimizer in enumerate(optimizers_sender):
-                torch.save(optimizer.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_optimizersender_{i}.pt')
+                torch.save(optimizer.state_dict(), path + f'/saves/finetune/episode_{alg_params["episode"]}_optimizersender_{i}.pt')
             for i, optimizer in enumerate(optimizers_receiver):
-                torch.save(optimizer.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_optimizerreceiver_{i}.pt')
+                torch.save(optimizer.state_dict(), path + f'/saves/finetune/episode_{alg_params["episode"]}_optimizerreceiver_{i}.pt')
             for i, scheduler in enumerate(schedulers_sender):
-                torch.save(scheduler.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_schedulersender_{i}.pt')
+                torch.save(scheduler.state_dict(), path + f'/saves/finetune/episode_{alg_params["episode"]}_schedulersender_{i}.pt')
             for i, scheduler in enumerate(schedulers_receiver):
-                torch.save(scheduler.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_schedulerreceiver_{i}.pt')
-            torch.save(baselines, path + f'/saves/finetune/episode_{alg_params[episode]}_baselines.pt')
+                torch.save(scheduler.state_dict(), path + f'/saves/finetune/episode_{alg_params["episode"]}_schedulerreceiver_{i}.pt')
+            torch.save(baselines, path + f'/saves/finetune/episode_{alg_params["episode"]}_baselines.pt')
 
     writer.flush()
 
@@ -881,7 +886,7 @@ def weighted_softmax_commentary_training_interactive_only(senders, receivers, co
 
     writer.flush()
 
-def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, epsilon=0.1, fifo_size=10, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99, lr_decay=1.0, save_every=10, load_params=False):
+def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, sampling={'style':'epsilon_greedy', 'control':0.1}, fifo_size=10, tscl_polyak=0.0, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99, lr_decay=1.0, entropy_factor=0.0, save_every=10, load_params=False):
 
     #indexing here will generally be first sender index, then receiver index for anything that has num_senders x num_receivers elements arranged in a 2d grid
     if not load_params:
@@ -889,8 +894,8 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
         alg_params['num_senders'] = len(senders)
         assert len(senders) == alg_params['num_senders']
         alg_params['num_receivers'] = len(receivers)
-        assert len(receivers == alg_params['num_receivers'])
-        alg_params['episode'] = 0
+        assert len(receivers) == alg_params['num_receivers']
+        alg_params['episode'] = 1
     else:
         with open(path + f'/saves/finetune/alg_params.pickle', 'rb') as file:
             alg_params = pickle.load(file)
@@ -910,30 +915,31 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
 
     baselines = torch.zeros(size=(alg_params['num_senders'],alg_params['num_receivers'])).to(device=device)
 
-    tscl = utils.tscl_helper(alg_params['num_senders'], alg_params['num_receivers'], fifo_size=fifo_size)
+    tscl = utils.tscl_helper(alg_params['num_senders'], alg_params['num_receivers'], fifo_size=fifo_size, tscl_polyak=tscl_polyak)
 
     if load_params:
-        episode = alg_params['episode']
         # All Models
         for i, sender_model in enumerate(senders):
-            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_sender_{i}.pt')
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_sender_{i}.pt')
             sender_model.load_state_dict(state_dict)
         for i, receiver_model in enumerate(receivers):
-            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_receiver_{i}.pt')
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_receiver_{i}.pt')
             receiver_model.load_state_dict(state_dict)
         for i, optimizer in enumerate(optimizers_sender):
-            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_optimizersender_{i}.pt')
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_optimizersender_{i}.pt')
             optimizer.load_state_dict(state_dict)
         for i, optimizer in enumerate(optimizers_receiver):
-            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_optimizerreceiver_{i}.pt')
+            state_dict = torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_optimizerreceiver_{i}.pt')
             optimizer.load_state_dict(state_dict)
         for i, scheduler in enumerate(schedulers_sender):
-            torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_schedulersender_{i}.pt')
+            torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_schedulersender_{i}.pt')
         for i, scheduler in enumerate(schedulers_receiver):
-            torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_schedulerreceiver_{i}.pt')
-        baselines = torch.load(path + f'/saves/finetune/episode_{alg_params[episode]}_baselines.pt')
-        with open(path + f'/saves/finetune/episode_{alg_params[episode]}_tscl.pickle', 'rb') as file:
+            torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_schedulerreceiver_{i}.pt')
+        baselines = torch.load(path + f'/saves/finetune/episode_{alg_params["episode"]}_baselines.pt')
+        with open(path + f'/saves/finetune/episode_{alg_params["episode"]}_tscl.pickle', 'rb') as file:
             tscl = pickle.load(file)
+        alg_params['episode'] = alg_params['episode'] + 1  # save was at end of episode, now advance one episode!
+
 
     (train_ds, test_ds), vocab = data.load_prepared_coco_data()
 
@@ -957,10 +963,10 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
     entropies = [torchmetrics.MeanMetric() for _ in range(alg_params['num_senders'])]
 
 
-    for alg_params['episode'] in (p_bar := tqdm(range(alg_params['episode'], num_episodes))):
+    for alg_params['episode'] in (p_bar := tqdm(range(alg_params['episode'], alg_params['episode'] + num_episodes))):
 
         for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_train, repeats_per_epoch):
-            sender_idx, receiver_idx = tscl.sample_epsilon_greedy(epsilon=epsilon)
+            sender_idx, receiver_idx = tscl.sample(sampling=sampling)
             sender = senders[sender_idx]
             receiver = receivers[receiver_idx]
             receiver.train()
@@ -994,7 +1000,7 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
             log_p_mask = prob_mask(seq)
             log_p = log_p*log_p_mask
             log_p = torch.sum(log_p, dim=1)
-            value = -loss.detach()
+            value = (-loss - entropy_factor*log_p).detach()
             baselined_value = value - baselines[sender_idx, receiver_idx]
             sender_reinforce_objective = log_p*baselined_value
             sender_loss = torch.mean(-sender_reinforce_objective)
@@ -1087,7 +1093,7 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
 
         p_bar.set_description(
             f'Train: L{np.mean(training_loss_result) :.3e} / ACC{np.mean(training_acc_result) :.3e} || Test: L{np.mean(test_loss_result) :.3e} / ACC{np.mean(test_acc_result) :.3e}')
-        writer.add_scalars(main_tag=writer_tag,
+        writer.add_scalars(main_tag='todotag',
                            tag_scalar_dict=write_dict,
                            global_step=alg_params['episode'])
 
@@ -1095,23 +1101,22 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
         if alg_params['episode']%save_every==0:
             with open(path + f'/saves/finetune/alg_params.pickle', 'wb') as file:
                 pickle.dump(alg_params, file)
-            episode = alg_params['episode']
-            with open(path + f'/saves/finetune/episode_{alg_params[episode]}_tscl.pickle', 'wb') as file:
+            with open(path + f'/saves/finetune/episode_{alg_params["episode"]}_tscl.pickle', 'wb') as file:
                 pickle.dump(tscl, file)
             #All Models
             for i, sender_model in enumerate(senders):
-                torch.save(sender_model.state_dict(), path+f'/saves/finetune/episode_{alg_params[episode]}_sender_{i}.pt')
+                torch.save(sender_model.state_dict(), path+f'/saves/finetune/episode_{alg_params["episode"]}_sender_{i}.pt')
             for i, receiver_model in enumerate(receivers):
-                torch.save(receiver_model.state_dict(), path+f'/saves/finetune/episode_{alg_params[episode]}_receiver_{i}.pt')
+                torch.save(receiver_model.state_dict(), path+f'/saves/finetune/episode_{alg_params["episode"]}_receiver_{i}.pt')
             for i, optimizer in enumerate(optimizers_sender):
-                torch.save(optimizer.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_optimizersender_{i}.pt')
+                torch.save(optimizer.state_dict(), path + f'/saves/finetune/episode_{alg_params["episode"]}_optimizersender_{i}.pt')
             for i, optimizer in enumerate(optimizers_receiver):
-                torch.save(optimizer.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_optimizerreceiver_{i}.pt')
+                torch.save(optimizer.state_dict(), path + f'/saves/finetune/episode_{alg_params["episode"]}_optimizerreceiver_{i}.pt')
             for i, scheduler in enumerate(schedulers_sender):
-                torch.save(scheduler.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_schedulersender_{i}.pt')
+                torch.save(scheduler.state_dict(), path + f'/saves/finetune/episode_{alg_params["episode"]}_schedulersender_{i}.pt')
             for i, scheduler in enumerate(schedulers_receiver):
-                torch.save(scheduler.state_dict(), path + f'/saves/finetune/episode_{alg_params[episode]}_schedulerreceiver_{i}.pt')
-            torch.save(baselines, path + f'/saves/finetune/episode_{alg_params[episode]}_baselines.pt')
+                torch.save(scheduler.state_dict(), path + f'/saves/finetune/episode_{alg_params["episode"]}_schedulerreceiver_{i}.pt')
+            torch.save(baselines, path + f'/saves/finetune/episode_{alg_params["episode"]}_baselines.pt')
 
     writer.flush()
 
@@ -1214,7 +1219,6 @@ if __name__ == '__main__':
     """
 
     path = f'results/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
-    writer_tag = 'idx:commentaries'
     num_distractors = 1
     pretrain_episodes = 15
 
@@ -1227,8 +1231,7 @@ if __name__ == '__main__':
 
     senders = [agents.lstm_sender_agent(feature_size=2049, text_embedding_size=128, vocab_size=2000, lstm_size=128,
                                         lstm_depth=2, feature_embedding_hidden_size=64) for _ in range(num_senders)]
-    pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
-                                                                   writer_tag='a_sender', batch_size=256,
+    pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining', batch_size=256,
                                                                    num_distractors=num_distractors,
                                                                    num_episodes=pretrain_episodes, device=device)
     senders = [pretrain_sender(sender) for sender in tqdm(senders)]
@@ -1240,11 +1243,9 @@ if __name__ == '__main__':
     pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver,
                                                                          num_episodes=pretrain_episodes,
                                                                          path=path + 'receiver_pretraining',
-                                                                         writer_tag='a_l_receiver',
                                                                          batch_size=128,
                                                                          num_distractors=num_distractors, lr=0.0001,
                                                                          device=device)
     receivers = [pretrain_receiver(receiver) for receiver in tqdm(receivers)]
-    baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path,
-                                                  writer_tag, num_episodes=200, batch_size=512, num_workers=4,
+    baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, num_episodes=200, batch_size=512, num_workers=4,
                                                   repeats_per_epoch=1, device=device, baseline_polyak=0.99)

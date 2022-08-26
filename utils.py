@@ -58,7 +58,8 @@ class fifo_buffer():
         return self.timesteps, self.values
 
 class tscl_helper():
-    def __init__(self, num_senders, num_receivers, fifo_size):
+    def __init__(self, num_senders, num_receivers, fifo_size, tscl_polyak=0.0):
+        self.polyak = tscl_polyak
         self.num_senders = num_senders
         self.num_receivers = num_receivers
         self.fifo_buffers = [fifo_buffer(size=fifo_size) for _ in range(num_senders*num_receivers)]
@@ -79,7 +80,7 @@ class tscl_helper():
         #use np.polyfit instead, which is much more efficient for small like 10 we have here
         linreg = stats.linregress(x=timesteps-self.step, y=values)
         slope = linreg.slope
-        self.task_rewards[flat_idx] = np.abs(slope)
+        self.task_rewards[flat_idx] = (self.polyak*self.task_rewards[flat_idx]) + ((1.-self.polyak)*np.abs(slope))
         self.step = self.step + 1
 
     def sender_target_idx(self, flat_idx):
@@ -104,6 +105,21 @@ class tscl_helper():
             f_idx = np.argmax(self.task_rewards)
         sender, receiver = self.sender_target_idx(f_idx)
         return sender, receiver
+
+    def thompson_sampling(self, temperature):
+        sm = torch.nn.Softmax(dim=-1)
+        probs = sm(torch.from_numpy(self.task_rewards)*temperature).numpy()
+        f_idx = np.random.choice(self.num_senders*self.num_receivers, p=probs)
+        sender, receiver = self.sender_target_idx(f_idx)
+        return sender, receiver
+
+    def sample(self, sampling):
+        if sampling['style'] == 'epsilon_greedy':
+            return self.sample_epsilon_greedy(epsilon=sampling['control'])
+        elif sampling['style'] == 'thompson_sampling' :
+            return self.thompson_sampling(temperature=sampling['control'])
+        else:
+            raise NotImplementedError
 
 class cbow_average_module(torch.nn.Module):
     def __init__(self, dim=1):

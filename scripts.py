@@ -58,8 +58,8 @@ def get_run_date(run_key, extend):
 def create_exp_dirs(path):
     save_path = path + 'saves/'
     for which_training in ['pretraining', 'finetune']:
-        os.makedirs(save_path + which_training)
-    os.makedirs(path + 'results')
+        os.makedirs(save_path + which_training, exist_ok=True)
+    os.makedirs(path + 'results', exist_ok=True)
 
 def save_pretrained_models(senders, receivers, path):
     for what_agent, networks in zip(['sender', 'receiver'], [senders, receivers]):
@@ -99,6 +99,11 @@ def tscl_population_training(args):
     extend = args.extend
     lr_decay = args.lr_decay
     save_every = args.save_every
+    entropy_factor = args.entropy_regularization
+    tscl_polyak = args.tscl_polyak
+    sampling = {}
+    sampling['style'] = args.tscl_sampling
+    sampling['control'] = args.tscl_thompson_temp if args.tscl_sampling == 'thompson_sampling' else args.tscl_epsilon
 
     senders = [string_to_agent(args.sender) for _ in range(num_senders)]
     receivers = [string_to_agent(args.receiver) for
@@ -108,8 +113,7 @@ def tscl_population_training(args):
         create_exp_dirs(path)
         save_hyperparams(path, args)
 
-        pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
-                                                                       writer_tag=writer_tag, batch_size=batch_size,
+        pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining', batch_size=batch_size,
                                                                        num_distractors=num_distractors,
                                                                        num_episodes=pretraining_epochs, lr=pretraining_lr,
                                                                        device=device)
@@ -119,7 +123,6 @@ def tscl_population_training(args):
         pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver,
                                                                              num_episodes=pretraining_epochs,
                                                                              path=path + 'receiver_pretraining',
-                                                                             writer_tag=writer_tag,
                                                                              batch_size=batch_size,
                                                                              num_distractors=num_distractors,
                                                                              lr=pretraining_lr, device=device)
@@ -129,7 +132,7 @@ def tscl_population_training(args):
 
 
     print('Interactive finetuning')
-    marl_training.tscl_multiagent_training_interactive_only(senders=senders, receivers=receivers, receiver_lr=receiver_lr, sender_lr=sender_lr, num_distractors=num_distractors, path=path, epsilon=epsilon, fifo_size=fifo_size, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device, lr_decay=lr_decay, save_every=save_every, load_params=extend)
+    marl_training.tscl_multiagent_training_interactive_only(senders=senders, receivers=receivers, receiver_lr=receiver_lr, sender_lr=sender_lr, num_distractors=num_distractors, path=path, sampling=sampling, fifo_size=fifo_size, tscl_polyak=tscl_polyak, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device, lr_decay=lr_decay, entropy_factor=entropy_factor, save_every=save_every, load_params=extend)
 
 
 def commentary_idx_training(args):
@@ -142,7 +145,7 @@ def commentary_idx_training(args):
     for which_training in ['pretraining', 'finetuning']:
         for agent in ['sender', 'receiver']:
             sub_dir = which_training + '_' + agent
-            os.makedirs(save_path + sub_dir)
+            os.makedirs(save_path + sub_dir, exist_ok=True)
 
     save_hyperparams(path, args)
 
@@ -214,7 +217,7 @@ def commentary_idx_training(args):
 
     # save commentary_network
     c_network_path = save_path + 'commentary_network/commment.pt'
-    os.makedirs(save_path + 'commentary_network')
+    os.makedirs(save_path + 'commentary_network', exist_ok=True)
     torch.save(commentary_nn.state_dict(), c_network_path)
 
 def commentary_weighting_training(args):
@@ -326,6 +329,7 @@ def baseline_population_training(args):
     extend = args.extend
     lr_decay = args.lr_decay
     save_every = args.save_every
+    entropy_factor = args.entropy_regularization
 
     senders = [string_to_agent(args.sender) for _ in range(num_senders)]
     receivers = [string_to_agent(args.receiver) for _ in range(num_receivers)]
@@ -335,16 +339,14 @@ def baseline_population_training(args):
 
         save_hyperparams(path, args)
 
-        pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining',
-                                      writer_tag=writer_tag, batch_size=batch_size, num_distractors=num_distractors,
+        pretrain_sender = lambda sender: training.pretrain_sender_lstm(sender=sender, path=path + 'sender_pretraining', batch_size=batch_size, num_distractors=num_distractors,
                                       num_episodes=pretraining_epochs, lr=pretraining_lr, device=device)
         print('Pretraining senders:')
         senders = [pretrain_sender(sender) for sender in tqdm(senders)]
 
 
         pretrain_receiver = lambda receiver: training.pretrain_receiver_lstm(receiver=receiver, num_episodes=pretraining_epochs,
-                                          path=path + 'receiver_pretraining', writer_tag=writer_tag,
-                                          batch_size=batch_size, num_distractors=num_distractors, lr=pretraining_lr, device=device)
+                                          path=path + 'receiver_pretraining', batch_size=batch_size, num_distractors=num_distractors, lr=pretraining_lr, device=device)
         print('Pretraining receivers:')
         receivers = [pretrain_receiver(receiver) for receiver in tqdm(receivers)]
         save_pretrained_models(senders, receivers, path)
@@ -353,7 +355,7 @@ def baseline_population_training(args):
 
 
     print('Interactive finetuning')
-    marl_training.baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device, baseline_polyak=0.99, lr_decay=lr_decay, save_every=save_every, load_params=extend)
+    marl_training.baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device, baseline_polyak=0.99, lr_decay=lr_decay, entropy_factor=entropy_factor, save_every=save_every, load_params=extend)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='scripts running MARL LE experiments')
@@ -370,25 +372,38 @@ if __name__ == '__main__':
     parser.add_argument('--num_distractors', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--fifo_size', type=int, default=10)
-    parser.add_argument('--epsilon', type=float, default=0.1)
+    parser.add_argument('--tscl_polyak', type=float, default=0.0)
+    parser.add_argument('--tscl_epsilon', type=float, default=0.1)
+    parser.add_argument('--tscl_thompson_temp', type=float, default=100)
     parser.add_argument('--commentary_lr', type=float, default=0.00001)
     parser.add_argument('--inner_loop_steps', type=int, default=2)
     parser.add_argument('--repeats_per_epoch', type=int, default=1)
-    parser.add_argument('--run_key', type=str, default='default')
+    parser.add_argument('--entropy_regularization', type=float, default=0.0)
+    parser.add_argument('--run_key', type=str, default='default', required=True)
     parser.add_argument('--extend', type=bool, default=False)
     parser.add_argument('--lr_decay', type=float, default=1.0)
     parser.add_argument('--save_every', type=int, default=10)
+    parser.add_argument('--forceload_args', type=bool, default=False)
+    parser.add_argument('--tscl_sampling', type=str, default='epsilon_greedy', choices=['epsilon_greedy','thompson_sampling'])
 
     script_dict = {'baseline_population_training':baseline_population_training, 'tscl_population_training':tscl_population_training, 'commentary_weighting_training':commentary_weighting_training, 'commentary_idx_training':commentary_idx_training}
     args = parser.parse_args()
     print(vars(args))
 
     #make sure the run is legit, i.e. if a run is to be extended, the run does already exist, if start from scratch make sure a new key is used!
-    os.makedirs(os.path.dirname(os.path.abspath(__file__)) + '/results/rundocs')
+    os.makedirs(os.path.dirname(os.path.abspath(__file__)) + '/results/rundocs', exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(__file__)) + '/results/rundocs/runargs', exist_ok=True)
+
     if args.extend:
-        assert os.path.isdir(f'{os.path.dirname(os.path.abspath(__file__))}/results/{args.run_key}.pickle')
+        assert os.path.isfile(f'{os.path.dirname(os.path.abspath(__file__))}/results/rundocs/{args.run_key}.pickle')
+        if args.forceload_args:
+            with open(f'{os.path.dirname(os.path.abspath(__file__))}/results/rundocs/runargs/{args.run_key}.pickle', 'rb') as file:
+                args = pickle.load(file)
+                args.extend = True
     else:
-        assert not os.path.isdir(f'{os.path.dirname(os.path.abspath(__file__))}/results/{args.run_key}.pickle')
+        assert not os.path.isfile(f'{os.path.dirname(os.path.abspath(__file__))}/results/rundocs/{args.run_key}.pickle')
+        with open(f'{os.path.dirname(os.path.abspath(__file__))}/results/rundocs/runargs/{args.run_key}.pickle', 'wb') as file:
+            pickle.dump(args, file)
     #run the script!
     script_dict[args.experiment](args)
 

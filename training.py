@@ -41,7 +41,7 @@ def prob_mask(tokens, eos_token=4):
 
     return eos_tokens
 
-def pretrain_sender_transfomer(sender, num_episodes, path, writer_tag,  batch_size=128, num_distractors=7, lr=0.0001, num_workers=4, device='cpu'):
+def pretrain_sender_transfomer(sender, num_episodes, path, batch_size=128, num_distractors=7, lr=0.0001, num_workers=4, device='cpu'):
     sender.to(device)
     sender.train()
     optimizer = torch.optim.Adam(sender.parameters(), lr=lr)
@@ -127,13 +127,13 @@ def pretrain_sender_transfomer(sender, num_episodes, path, writer_tag,  batch_si
         test_pp.reset()
 
         p_bar.set_description(f'Train: L{episode_training_loss :.3e} / PP{episode_training_pp :.3e} || Test: L{episode_test_loss :.3e} / PP{episode_test_pp :.3e}')
-        writer.add_scalars(main_tag=writer_tag, tag_scalar_dict={'training_loss': episode_training_loss, 'training_pp': episode_training_pp, 'test_loss': episode_test_loss, 'test_pp': episode_test_pp}, global_step=episode)
+        writer.add_scalars(main_tag='todotag', tag_scalar_dict={'training_loss': episode_training_loss, 'training_pp': episode_training_pp, 'test_loss': episode_test_loss, 'test_pp': episode_test_pp}, global_step=episode)
         writer.add_text(tag='test_sentences', text_string=write_string, global_step=episode)
 
     writer.flush()
     return sender
 
-def pretrain_sender_lstm(sender, num_episodes, path, writer_tag,  batch_size=128, num_distractors=7, lr=0.0001, num_workers=4, device='cpu'):
+def pretrain_sender_lstm(sender, num_episodes, path,  batch_size=128, num_distractors=7, lr=0.0001, num_workers=4, device='cpu'):
     sender.to(device)
     sender.train()
     optimizer = torch.optim.Adam(sender.parameters(), lr=lr)
@@ -221,13 +221,13 @@ def pretrain_sender_lstm(sender, num_episodes, path, writer_tag,  batch_size=128
         test_pp.reset()
 
         p_bar.set_description(f'Train: L{episode_training_loss :.3e} / PP{episode_training_pp :.3e} || Test: L{episode_test_loss :.3e} / PP{episode_test_pp :.3e}')
-        writer.add_scalars(main_tag=writer_tag, tag_scalar_dict={'training_loss': episode_training_loss, 'training_pp': episode_training_pp, 'test_loss': episode_test_loss, 'test_pp': episode_test_pp}, global_step=episode)
+        writer.add_scalars(main_tag='todotag', tag_scalar_dict={'training_loss': episode_training_loss, 'training_pp': episode_training_pp, 'test_loss': episode_test_loss, 'test_pp': episode_test_pp}, global_step=episode)
         writer.add_text(tag='test_sentences', text_string=write_string, global_step=episode)
     writer.flush()
     return sender
 
 
-def pretrain_receiver_transformer(receiver, num_episodes, path, writer_tag,  batch_size=128, num_distractors=7, lr=0.0001, num_workers=4, device='cpu'):
+def pretrain_receiver_transformer(receiver, num_episodes, path,  batch_size=128, num_distractors=7, lr=0.0001, num_workers=4, device='cpu'):
     receiver.to(device)
     receiver.train()
     optimizer = torch.optim.Adam(receiver.parameters(), lr=lr)
@@ -301,7 +301,7 @@ def pretrain_receiver_transformer(receiver, num_episodes, path, writer_tag,  bat
 
         p_bar.set_description(
             f'Train: L{episode_training_loss :.3e} / ACC{episode_training_acc :.3e} || Test: L{episode_test_loss :.3e} / ACC{episode_test_acc :.3e}')
-        writer.add_scalars(main_tag=writer_tag,
+        writer.add_scalars(main_tag='todotag',
                            tag_scalar_dict={'training_loss': episode_training_loss, 'training_pp': episode_training_acc,
                                             'test_loss': episode_test_loss, 'test_pp': episode_test_acc},
                            global_step=episode)
@@ -309,7 +309,7 @@ def pretrain_receiver_transformer(receiver, num_episodes, path, writer_tag,  bat
     writer.flush()
     return receiver
 
-def pretrain_receiver_lstm(receiver, num_episodes, path, writer_tag,  batch_size=128, num_distractors=7, lr=0.0001, num_workers=4, device='cpu'):
+def pretrain_receiver_lstm(receiver, num_episodes, path,  batch_size=128, num_distractors=7, lr=0.0001, num_workers=4, device='cpu'):
     receiver.to(device)
     receiver.train()
     optimizer = torch.optim.Adam(receiver.parameters(), lr=lr)
@@ -387,7 +387,7 @@ def pretrain_receiver_lstm(receiver, num_episodes, path, writer_tag,  batch_size
 
         p_bar.set_description(
             f'Train: L{episode_training_loss :.3e} / ACC{episode_training_acc :.3e} || Test: L{episode_test_loss :.3e} / ACC{episode_test_acc :.3e}')
-        writer.add_scalars(main_tag=writer_tag,
+        writer.add_scalars(main_tag='todotag',
                            tag_scalar_dict={'training_loss': episode_training_loss, 'training_pp': episode_training_acc,
                                             'test_loss': episode_test_loss, 'test_pp': episode_test_acc},
                            global_step=episode)
@@ -395,7 +395,7 @@ def pretrain_receiver_lstm(receiver, num_episodes, path, writer_tag,  batch_size
     writer.flush()
     return receiver
 
-def interactive_training(sender, receiver, receiver_lr, sender_lr, path, writer_tag,  batch_size=128, num_distractors=7, num_episodes=200, num_workers=4, device='cpu', baseline_polyak=0.99):
+def interactive_training(sender, receiver, receiver_lr, sender_lr, path,  batch_size=128, num_distractors=7, num_episodes=200, num_workers=4, device='cpu', baseline_polyak=0.99):
     receiver.to(device)
     receiver.train()
     sender.to(device)
@@ -531,7 +531,7 @@ def interactive_training(sender, receiver, receiver_lr, sender_lr, path, writer_
 
         p_bar.set_description(
             f'Train: L{episode_training_loss :.3e} / ACC{episode_training_acc :.3e} || Test: L{episode_test_loss :.3e} / ACC{episode_test_acc :.3e} with H{episode_entropy:.3e} and p{episode_probs:.3e}')
-        writer.add_scalars(main_tag=writer_tag,
+        writer.add_scalars(main_tag='todotag',
                            tag_scalar_dict={'training_loss': episode_training_loss, 'training_pp': episode_training_acc,
                                             'test_loss': episode_test_loss, 'test_pp': episode_test_acc, 'entropy' : episode_entropy, 'probs':episode_probs},
                            global_step=episode)
@@ -565,14 +565,12 @@ if __name__ == '__main__':
     #pretrain_receiver_lstm(receiver=agent, num_episodes=100, path=f'results/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}', writer_tag='a_l_receiver',  batch_size=128, num_distractors=7, lr=0.0001, device=device)
     path = f'results/{datetime.now().strftime("%m_%d_%Y,%H:%M:%S")}/'
     sender = agents.lstm_sender_agent(feature_size=2049, text_embedding_size=128, vocab_size=2000, lstm_size=128, lstm_depth=2, feature_embedding_hidden_size=64)
-    sender = pretrain_sender_lstm(sender=sender, path=path+'sender_pretraining',
-                         writer_tag='a_sender', batch_size=256, num_distractors=num_distractors, num_episodes=20, device=device)
+    sender = pretrain_sender_lstm(sender=sender, path=path+'sender_pretraining', batch_size=256, num_distractors=num_distractors, num_episodes=20, device=device)
     receiver = agents.lstm_receiver_agent(feature_size=2048, text_embedding_size=128, vocab_size=2000, lstm_size=128, lstm_depth=2, feature_embedding_hidden_size=64, readout_hidden_size=32)
     receiver = pretrain_receiver_lstm(receiver=receiver, num_episodes=20,
-                           path=path+'receiver_pretraining', writer_tag='a_l_receiver',
-                           batch_size=128, num_distractors=num_distractors, lr=0.0001, device=device)
+                           path=path+'receiver_pretraining', batch_size=128, num_distractors=num_distractors, lr=0.0001, device=device)
 
-    interactive_training(sender=sender, receiver=receiver, receiver_lr=0.00001, sender_lr=0.00001,path=path+'finetuning', writer_tag='interactive', batch_size=1024, num_distractors=num_distractors,
+    interactive_training(sender=sender, receiver=receiver, receiver_lr=0.00001, sender_lr=0.00001,path=path+'finetuning',  batch_size=1024, num_distractors=num_distractors,
                          num_episodes=200, device=device)
 
 
