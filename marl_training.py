@@ -1,5 +1,5 @@
 import pickle
-
+import time
 import torch
 import data
 import agents
@@ -97,8 +97,282 @@ def prob_mask(tokens, eos_token=4):
 
     return eos_tokens
 
+def test_interactive(senders, receivers, test_ds, test_steps, criterion, test_loss_grid, test_acc_grid, device):
+    for sender_idx in range(len(senders)):
+        for receiver_idx in range(len(receivers)):
+            for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.take_from_dataset(test_ds, test_steps):
+                sender = senders[sender_idx]
+                receiver = receivers[receiver_idx]
+                receiver.eval()
+                sender.eval()
+                all_features_batch = all_features_batch.to(device=device)
+                # target_captions_stack = target_captions_stack.to(device=device)
+                target_idx_batch = target_idx_batch.to(device=device)
+                target_encoded_features = target_distractor_encode_data(all_features_batch, target_idx_batch,
+                                                                        num_distractors + 1)  # before squeezing!
+                target_idx_batch = torch.squeeze(target_idx_batch)
 
-def baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99, lr_decay=1.0, entropy_factor=0.0, save_every=10, load_params=False):
+                seq, log_p = sender(target_encoded_features, seq_data=None, device=device)
+                seq = seq.detach()  # technically not necessary but kind of nicer
+
+                logits = receiver(all_features_batch, seq)
+                loss = criterion(logits, target_idx_batch)
+
+                value = -loss.detach()
+                test_loss_grid[sender_idx][receiver_idx].update(-torch.mean(value).to(device='cpu'))
+                test_acc_grid[sender_idx][receiver_idx].update(logits.to(device='cpu'), target_idx_batch.to(device='cpu'))
+
+def test_supervised_sender(senders, test_ds, test_steps, test_sender_pp_list, test_sender_loss_list, device):
+    criterion = torch.nn.CrossEntropyLoss(reduction='none')
+    for sender_idx in senders:
+        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.take_from_dataset(
+            test_ds, test_steps):
+            sender = senders[sender_idx]
+            sender.eval()
+            all_features_batch = all_features_batch.to(device=device)
+            target_captions_stack = target_captions_stack.to(device=device)
+            target_idx_batch = target_idx_batch.to(device=device)
+            target_encoded_features = target_distractor_encode_data(all_features_batch, target_idx_batch,
+                                                                    num_distractors + 1)
+            logits = sender(target_encoded_features, target_captions_stack[:, :-1], device=device)
+            cce = criterion(torch.swapaxes(logits, 1, 2), target_captions_stack[:, 1:])
+            loss = cce*prob_mask(target_captions_stack)[:,1:]
+            loss = torch.mean(loss)
+            #calc pp - cce is logp for each predicted token
+            log_p_by_sentence = torch.sum(cce, dim=-1) #notice multiplying with mask sets this to 0 whereever outside of sentence!
+            num_words_by_sentence = torch.sum(prob_mask(target_captions_stack))
+            print(f'TODO - remove this (PP calc): {log_p_by_sentence.size()}, {num_words_by_sentence.size()}')
+            #calc geometric mean of word probabilities for pp for each sentence
+            norm_sentence_p = torch.exp(log_p_by_sentence/num_words_by_sentence)
+            sentence_pp = 1/norm_sentence_p
+            pp = torch.mean(sentence_pp)
+            test_sender_pp_list[sender_idx].update(pp.to(device='cpu'))
+            test_sender_loss_list[sender_idx].update(loss.to(device='cpu'))
+
+
+def test_supervised_receiver(receivers, test_ds, test_steps, test_receiver_acc_list, test_receiver_loss_list, device):
+    criterion = torch.nn.CrossEntropyLoss()
+    for receiver_idx in range(len(receivers)):
+        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.take_from_dataset(test_ds, test_steps):
+            receiver = receivers[receiver_idx]
+            receiver.eval()
+            all_features_batch = all_features_batch.to(device=device)
+            target_captions_stack = target_captions_stack.to(device=device)
+            target_idx_batch = target_idx_batch.to(device=device)
+            target_idx_batch = torch.squeeze(target_idx_batch)
+
+            all_features_batch = all_features_batch.to(device=device)
+            target_captions_stack = target_captions_stack.to(device=device)
+            target_idx_batch = target_idx_batch.to(device=device)
+
+            logits = receiver(all_features_batch, target_captions_stack)
+            loss = criterion(logits, target_idx_batch)
+
+            test_receiver_acc_list[receiver_idx].update(logits.to('cpu'), target_idx_batch.to('cpu'))
+            test_receiver_loss_list[receiver_idx].update(loss.to('cpu'))
+
+def log_progress(training_loss_grid, training_acc_grid, test_loss_grid, test_acc_grid, entropies, sender_sup_loss_list, sender_sup_pp_list, receiver_sup_loss_list, receiver_sup_acc_list, alg_params, writer, train_time, test_time, p_bar, path):
+    step = alg_params['episode']
+    entropy_results = []
+    training_acc_result = []
+    training_loss_result = []
+    test_acc_result = []
+    test_loss_result = []
+
+    write_dict = {}
+    for sender_idx in range(alg_params['num_senders']):
+        episode_entropy = entropies[sender_idx].compute()
+        entropies[sender_idx].reset()
+        write_dict[f'entropy_sender_{sender_idx}'] = episode_entropy
+        entropy_results.append(episode_entropy)
+        for receiver_idx in range(alg_params['num_receivers']):
+            training_loss = training_loss_grid[sender_idx][receiver_idx]
+            episode_training_loss = training_loss.compute()
+            training_loss.reset()
+
+            training_acc = training_acc_grid[sender_idx][receiver_idx]
+            episode_training_acc = utils.safe_compute_accuracy_metric(training_acc)
+            training_acc.reset()
+
+            test_loss = test_loss_grid[sender_idx][receiver_idx]
+            episode_test_loss = test_loss.compute()
+            test_loss.reset()
+
+            test_acc = test_acc_grid[sender_idx][receiver_idx]
+            episode_test_acc = utils.safe_compute_accuracy_metric(test_acc)
+            test_acc.reset()
+
+            write_dict[f'training_loss_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_training_loss
+            write_dict[f'training_acc_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_training_acc
+            write_dict[f'test_loss_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_test_loss
+            write_dict[f'test_acc_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_test_acc
+
+            training_acc_result.append(episode_training_acc)
+            training_loss_result.append(episode_training_loss)
+            test_acc_result.append(episode_test_acc)
+            test_loss_result.append(episode_test_loss)
+
+    for sender_idx in range(alg_params['num_senders']):
+        sup_sender_loss = sender_sup_loss_list[sender_idx].compute()
+        sender_sup_loss_list[sender_idx].reset()
+        sup_sender_pp = sender_sup_pp_list[sender_idx].compute()
+        sender_sup_pp_list[sender_idx].reset()
+
+        write_dict[f'sup_loss_sender_{sender_idx}'] = sup_sender_loss
+        write_dict[f'sup_pp_sender_{sender_idx}'] = sup_sender_pp
+
+
+
+    for receiver_idx in range(alg_params['num_receivers']):
+        sup_receiver_loss = receiver_sup_loss_list[receiver_idx].compute()
+        receiver_sup_loss_list[receiver_idx].reset()
+        sup_receiver_acc = receiver_sup_acc_list[receiver_idx].compute()
+        receiver_sup_acc_list[receiver_idx].reset()
+
+        write_dict[f'sup_loss_receiver_{receiver_idx}'] = sup_receiver_loss
+        write_dict[f'sup_acc_receiver_{[receiver_idx]}'] = sup_receiver_acc
+        
+    writer.add_scalars(main_tag='Summary/WallTime', tag_scalar_dict={'TrainTime':train_time, 'TestTime':test_time})
+    writer.add_scalar(tag='Summary/Mean_Training_Loss', value=np.nanmean(training_loss_result), global_step=step)
+    writer.add_scalar(tag='Summary/Mean_Training_Accuracy', value=np.nanmean(training_acc_result), global_step=step)
+    writer.add_scalar(tag='Summary/Mean_Test_Loss', value=np.nanmean(test_loss_result), global_step=step)
+    writer.add_scalar(tag='Summary/Mean_Test_Accuracy', value=np.nanmean(test_acc_result), global_step=step)
+    entropy_dict = dict([(f'Sender_{i}', entropy) for i, entropy in enumerate(entropy_results)])
+    entropy_dict['Mean_of_Senders'] = np.nanmean(entropy_results)
+    writer.add_scalars(main_tag='Summary/Sender_Entropy', tag_scalar_dict=entropy_dict, global_step=step)
+
+    sup_sender_loss_dict = dict([(f'Sender_{i}', write_dict[f'sup_loss_sender_{i}']) for i in range(alg_params['num_senders'])])
+    sup_sender_loss_dict['Mean'] = np.nanmean([sup_sender_loss_dict[key] for key in sup_sender_loss_dict.keys()])
+    writer.add_scalars(main_tag='Summary/Supervised_Sender_Loss', tag_scalar_dict=sup_sender_loss_dict, global_step=step)
+
+    sup_sender_pp_dict = dict([(f'Sender_{i}', write_dict[f'sup_pp_sender_{i}']) for i in range(alg_params['num_senders'])])
+    sup_sender_pp_dict['Mean'] = np.nanmean([sup_sender_pp_dict[key] for key in sup_sender_pp_dict.keys()])
+    writer.add_scalars(main_tag='Summary/Supervised_Sender_Perplexity', tag_scalar_dict=sup_sender_pp_dict, global_step=step)
+
+    sup_receiver_loss_dict = dict([(f'Receiver_{i}', write_dict[f'sup_loss_receiver_{i}']) for i in range(alg_params['num_receivers'])])
+    sup_receiver_loss_dict['Mean'] = np.nanmean([sup_receiver_loss_dict[key] for key in sup_receiver_loss_dict.keys()])
+    writer.add_scalars(main_tag='Summary/Supervised_Receiver_Loss', tag_scalar_dict=sup_receiver_loss_dict, global_step=step)
+
+    sup_receiver_acc_dict = dict([(f'Receiver_{i}', write_dict[f'sup_acc_receiver_{i}']) for i in range(alg_params['num_receivers'])])
+    sup_receiver_acc_dict['Mean'] = np.nanmean([sup_receiver_acc_dict[key] for key in sup_receiver_acc_dict.keys()])
+    writer.add_scalars(main_tag='Summary/Supervised_Receiver_Accuracy', tag_scalar_dict=sup_receiver_acc_dict, global_step=step)
+
+    for sender_idx in range(alg_params['num_senders']):
+        writer.add_scalar(tag=f'Agents/Sender_{sender_idx}/Entropy', value=write_dict[f'entropy_sender_{sender_idx}'], global_step=step)
+        writer.add_scalar(tag=f'Agents/Sender_{sender_idx}/Supervised_Perplexity', value=write_dict[f'sup_pp_sender_{sender_idx}'], global_step=step)
+        writer.add_scalar(tag=f'Agents/Sender_{sender_idx}/Supervised_Loss', value=write_dict[f'sup_loss_sender_{sender_idx}'], global_step=step)
+        
+        interactive_train_loss_dict = dict([(f'With_Receiver_{i}', write_dict[f'training_loss_sender_{sender_idx}_receiver_{i}']) for i in range(alg_params['num_receivers'])])
+        interactive_train_loss_dict['Mean'] = np.nanmean([interactive_train_loss_dict[key] for key in interactive_train_loss_dict.keys()])
+        writer.add_scalars(main_tag=f'Agents/Sender_{sender_idx}/Interaction_Train_Loss', tag_scalar_dict=interactive_train_loss_dict, global_step=step)
+        
+        interactive_train_acc_dict = dict([(f'With_Receiver_{i}', write_dict[f'training_acc_sender_{sender_idx}_receiver_{i}']) for i in range(alg_params['num_receivers'])])
+        interactive_train_acc_dict['Mean'] = np.nanmean([interactive_train_acc_dict[key] for key in interactive_train_acc_dict.keys()])
+        writer.add_scalars(main_tag=f'Agents/Sender_{sender_idx}/Interaction_Train_Accuracy', tag_scalar_dict=interactive_train_acc_dict, global_step=step)
+        
+        interactive_test_loss_dict = dict([(f'With_Receiver_{i}', write_dict[f'test_loss_sender_{sender_idx}_receiver_{i}']) for i in range(alg_params['num_receivers'])])
+        interactive_test_loss_dict['Mean'] = np.nanmean([interactive_test_loss_dict[key] for key in interactive_test_loss_dict.keys()])
+        writer.add_scalars(main_tag=f'Agents/Sender_{sender_idx}/Interaction_Test_Loss', tag_scalar_dict=interactive_test_loss_dict, global_step=step)
+        
+        interactive_test_acc_dict = dict([(f'With_Receiver_{i}', write_dict[f'test_acc_sender_{sender_idx}_receiver_{i}']) for i in range(alg_params['num_receivers'])])
+        interactive_test_acc_dict['Mean'] = np.nanmean([interactive_test_acc_dict[key] for key in interactive_test_acc_dict.keys()])
+        writer.add_scalars(main_tag=f'Agents/Sender_{sender_idx}/Interaction_Test_Accuracy', tag_scalar_dict=interactive_test_acc_dict, global_step=step)
+
+    for receiver_idx in range(alg_params['num_receivers']):
+        writer.add_scalar(tag=f'Agents/Receiver_{receiver_idx}/Supervised_Accuracy', value=write_dict[f'sup_acc_receiver_{receiver_idx}'], global_step=step)
+        writer.add_scalar(tag=f'Agents/Receiver_{receiver_idx}/Supervised_Loss', value=write_dict[f'sup_loss_receiver_{receiver_idx}'], global_step=step)
+        
+        interactive_train_loss_dict = dict([(f'With_Sender_{i}', write_dict[f'training_loss_sender_{i}_receiver_{receiver_idx}']) for i in range(alg_params['num_senders'])])
+        interactive_train_loss_dict['Mean'] = np.nanmean([interactive_train_loss_dict[key] for key in interactive_train_loss_dict.keys()])
+        writer.add_scalars(main_tag=f'Agents/Receiver_{receiver_idx}/Interaction_Train_Loss', tag_scalar_dict=interactive_train_loss_dict, global_step=step)
+        
+        interactive_train_acc_dict = dict([(f'With_Sender_{i}', write_dict[f'training_acc_sender_{i}_receiver_{receiver_idx}']) for i in range(alg_params['num_senders'])])
+        interactive_train_acc_dict['Mean'] = np.nanmean([interactive_train_acc_dict[key] for key in interactive_train_acc_dict.keys()])
+        writer.add_scalars(main_tag=f'Agents/Receiver_{receiver_idx}/Interaction_Train_Accuracy', tag_scalar_dict=interactive_train_acc_dict, global_step=step)
+        
+        interactive_test_loss_dict = dict([(f'With_Sender_{i}', write_dict[f'test_loss_sender_{i}_receiver_{receiver_idx}']) for i in range(alg_params['num_senders'])])
+        interactive_test_loss_dict['Mean'] = np.nanmean([interactive_test_loss_dict[key] for key in interactive_test_loss_dict.keys()])
+        writer.add_scalars(main_tag=f'Agents/Receiver_{receiver_idx}/Interaction_Test_Loss', tag_scalar_dict=interactive_test_loss_dict, global_step=step)
+        
+        interactive_test_acc_dict = dict([(f'With_Sender_{i}', write_dict[f'test_acc_sender_{i}_receiver_{receiver_idx}']) for i in range(alg_params['num_senders'])])
+        interactive_test_acc_dict['Mean'] = np.nanmean([interactive_test_acc_dict[key] for key in interactive_test_acc_dict.keys()])
+        writer.add_scalars(main_tag=f'Agents/Receiver_{receiver_idx}/Interaction_Test_Accuracy', tag_scalar_dict=interactive_test_acc_dict, global_step=step)
+
+    p_bar.set_description(
+        f'Train: L{np.nanmean(training_loss_result) :.3e} / ACC{np.nanmean(training_acc_result) :.3e} || Test: L{np.nanmean(test_loss_result) :.3e} / ACC{np.nanmean(test_acc_result) :.3e}')
+    with open(path+f'results/log_step_{step}.pickle', 'wb') as file:
+        pickle.dump(write_dict, file)
+
+def log_tscl(alg_params, writer, tscl_counts, tscl_q, tscl_qmax, tscl_qmin, tscl_cat, tscl_choice, path):
+    step = alg_params['episode']
+    write_dict = {}
+    choices = tscl_choice.compute()
+    tscl_choice.reset()
+    write_dict['choice_list'] = choices
+    normalizer = len(choices)
+    for sender_idx in range(alg_params['num_senders']):
+        for receiver_idx in range(alg_params['num_receivers']):
+            count = tscl_counts[sender_idx][receiver_idx].compute()
+            tscl_counts[sender_idx][receiver_idx].reset()
+            write_dict[f'count_sender{sender_idx}_receiver_{receiver_idx}'] = count
+
+            qmean = tscl_q[sender_idx][receiver_idx].compute()
+            tscl_q[sender_idx][receiver_idx].reset()
+            write_dict[f'meanq_sender{sender_idx}_receiver_{receiver_idx}'] = qmean
+
+            qmax = tscl_qmax[sender_idx][receiver_idx].compute()
+            tscl_qmax[sender_idx][receiver_idx].reset()
+            write_dict[f'maxq_sender{sender_idx}_receiver_{receiver_idx}'] = qmax
+
+            qmin = tscl_qmin[sender_idx][receiver_idx].compute()
+            tscl_qmin[sender_idx][receiver_idx].reset()
+            write_dict[f'maxq_sender{sender_idx}_receiver_{receiver_idx}'] = qmin
+
+            qcat = tscl_cat[sender_idx][receiver_idx].compute()
+            tscl_cat[sender_idx][receiver_idx].reset()
+            qstd = torch.std(torch.as_tensor(qcat),-1,False)
+            write_dict[f'maxq_sender{sender_idx}_receiver_{receiver_idx}'] = qstd
+
+            writer.add_scalars(main_tag=f'TSCL/Task/Sender_{sender_idx}_receiver_{receiver_idx}', tag_scalar_dict={'Q_mean':qmean, 'Q_std':qstd, 'Sampling_Probability':count/normalizer, 'Q_min':qmin, 'Q_max':qmax})
+
+    choices = tscl_choice.compute()
+    tscl_choice.reset()
+    write_dict['choice_list'] = choices
+
+    for sender_idx in range(len(alg_params['num_senders'])):
+        count = 0
+        q_agg = []
+        for receiver_idx in range(len(alg_params['num_receivers'])):
+            count += write_dict[f'count_sender{sender_idx}_receiver_{receiver_idx}']
+            q_agg.append(write_dict[f'meanq_sender{sender_idx}_receiver_{receiver_idx}'])
+        sender_p = count/normalizer
+        sender_q = np.mean(q_agg)
+        writer.add_scalars(main_tag=f'TSCL/Agent/Sender_{sender_idx}', tag_scalar_dict={'Sampling_Probability':sender_p, 'Sender_average_Q':sender_q}, global_step=step)
+    for receiver_idx in range(len(alg_params['num_receivers'])):
+        count = 0
+        q_agg = []
+        for sender_idx in range(len(alg_params['num_senders'])):
+            count += write_dict[f'count_sender{sender_idx}_receiver_{receiver_idx}']
+            q_agg.append(write_dict[f'meanq_sender{sender_idx}_receiver_{receiver_idx}'])
+        receiver_p = count/normalizer
+        receiver_q = np.mean(q_agg)
+        writer.add_scalars(main_tag=f'TSCL/Agent/Receiver_{receiver_idx}', tag_scalar_dict={'Sampling_Probability':receiver_p, 'Sender_average_Q':receiver_q}, global_step=step)
+
+    prob_dict = {}
+    q_dict = {}
+
+    for sender_idx in range(alg_params['num_senders']):
+        for receiver_idx in range(alg_params['num_receivers']):
+            prob_dict[f'Probability_Sender_{sender_idx}_Receiver_{receiver_idx}'] = write_dict[f'count_sender{sender_idx}_receiver_{receiver_idx}']/normalizer
+            q_dict[f'Q_Sender_{sender_idx}_receiver_{receiver_idx}'] = write_dict[f'meanq_sender{sender_idx}_receiver_{receiver_idx}']
+    writer.add_scalars(main_tag='TSCL/Summary/Task_Probabilities', tag_scalar_dict=prob_dict, global_step=step)
+    writer.add_scalars(main_tag='TSCL/Summary/Task_Q', tag_scalar_dict=q_dict, global_step=step)
+
+    with open(path+f'results/tscl_log_step_{step}.pickle', 'wb') as file:
+        pickle.dump(write_dict, file)
+
+
+def baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99, lr_decay=1.0, entropy_factor=0.0, save_every=10, test_batch_size=512, test_steps=3, load_params=False):
     #indexing here will generally be first sender index, then receiver index for anything that has alg_params['num_senders'] x alg_params['num_receivers'] elements arranged in a 2d grid
 
     if not load_params:
@@ -159,17 +433,22 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
     validation_ds = test_ds[test_val_cutoff:]
     test_ds = test_ds[:test_val_cutoff]
     data_loader_test = data.create_data_loader(
-        test_ds, batch_size=batch_size, num_distractors=num_distractors, num_workers=num_workers, device=device
+        test_ds, batch_size=test_batch_size, num_distractors=num_distractors, num_workers=num_workers, device=device
     )
     #metrics
-    writer = SummaryWriter(path)
+    writer = SummaryWriter(path+'results')
     training_loss_grid = [[torchmetrics.MeanMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
     training_acc_grid = [[torchmetrics.Accuracy() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
     test_loss_grid = [[torchmetrics.MeanMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
     test_acc_grid = [[torchmetrics.Accuracy() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    test_supervised_sender_loss_list = [torchmetrics.MeanMetric() for _ in range(alg_params['num_senders'])]
+    test_supervised_sender_pp_list = [torchmetrics.MeanMetric() for _ in range(alg_params['num_senders'])]
+    test_supervised_receiver_loss_list = [torchmetrics.MeanMetric() for _ in range(alg_params['num_receivers'])]
+    test_supervised_receiver_acc_list = [torchmetrics.Accuracy() for _ in range(alg_params['num_receivers'])]
     entropies = [torchmetrics.MeanMetric() for _ in range(alg_params['num_senders'])]
 
     for alg_params['episode'] in (p_bar := tqdm(range(alg_params['episode'], alg_params['episode']+num_episodes))):
+        episode_train_start_time = time.time()
 
         for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_train, repeats_per_epoch):
 
@@ -222,82 +501,24 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
             training_loss_grid[sender_idx][receiver_idx].update(-torch.mean(value).to(device='cpu'))
             training_acc_grid[sender_idx][receiver_idx].update(logits.to(device='cpu'), target_idx_batch.to(device='cpu'))
             entropies[sender_idx].update(-torch.mean(log_p.to(device='cpu')))
+        episode_train_end_time = time.time()
 
-
-
-        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_test, repeats_per_epoch):
-            receiver_idx = random.randrange(0, alg_params['num_receivers'])
-            sender_idx = random.randrange(0, alg_params['num_senders'])
-            sender = senders[sender_idx]
-            receiver = receivers[receiver_idx]
-            receiver.eval()
-            sender.eval()
-
-            all_features_batch = all_features_batch.to(device=device)
-            #target_captions_stack = target_captions_stack.to(device=device)
-            target_idx_batch = target_idx_batch.to(device=device)
-            target_encoded_features = target_distractor_encode_data(all_features_batch, target_idx_batch, num_distractors+1)#before squeezing!
-            target_idx_batch = torch.squeeze(target_idx_batch)
-
-
-            seq, log_p = sender(target_encoded_features, seq_data=None, device=device)
-            seq = seq.detach() # technically not necessary but kind of nicer
-
-            logits = receiver(all_features_batch, seq)
-            loss = criterion(logits, target_idx_batch)
-
-            value = -loss.detach()
-            test_loss_grid[sender_idx][receiver_idx].update(-torch.mean(value).to(device='cpu'))
-            test_acc_grid[sender_idx][receiver_idx].update(logits.to(device='cpu'), target_idx_batch.to(device='cpu'))
+        episode_test_start_time = time.time()
+        #test now!
+        test_interactive(senders=senders, receivers=receivers, test_ds=data_loader_test, test_steps=test_steps, criterion=criterion, test_loss_grid=test_loss_grid, test_acc_grid=test_acc_grid, device=device)
+        test_supervised_sender(senders=senders, test_ds=data_loader_test, test_steps=test_steps, test_sender_pp_list=test_supervised_sender_pp_list, test_sender_loss_list=test_supervised_sender_loss_list, device=device)
+        test_supervised_receiver(receivers=receivers, test_ds=data_loader_test, test_steps=test_steps, test_receiver_acc_list=test_supervised_receiver_acc_list, test_receiver_loss_list=test_supervised_receiver_loss_list, device=device)
+        episode_test_end_time = time.time()
 
         #end of episode stuff
         [scheduler_receiver.step() for scheduler_receiver in schedulers_receiver]
         [scheduler_sender.step() for scheduler_sender in schedulers_sender]
 
-        entropy_results = []
-        training_acc_result = []
-        training_loss_result = []
-        test_acc_result = []
-        test_loss_result = []
+        train_time = episode_train_end_time - episode_train_start_time
+        test_time = episode_test_end_time - episode_test_start_time
 
-        write_dict = {}
-        for sender_idx in range(alg_params['num_senders']):
-            episode_entropy = entropies[sender_idx].compute()
-            entropies[sender_idx].reset()
-            write_dict[f'entropy_sender_{sender_idx}'] = episode_entropy
-            entropy_results.append(episode_entropy)
-            for receiver_idx in range(alg_params['num_receivers']):
-                training_loss = training_loss_grid[sender_idx][receiver_idx]
-                episode_training_loss = training_loss.compute()
-                training_loss.reset()
+        log_progress(training_loss_grid=training_loss_grid, training_acc_grid=training_acc_grid, test_loss_grid=test_loss_grid, test_acc_grid=test_acc_grid, entropies=entropies, sender_sup_loss_list=test_supervised_sender_loss_list, sender_sup_pp_list=test_supervised_sender_pp_list, receiver_sup_loss_list=test_supervised_receiver_loss_list, receiver_sup_acc_list=test_supervised_receiver_acc_list, alg_params=alg_params, writer=writer, train_time=train_time, test_time=test_time, p_bar=p_bar, path=path)
 
-                training_acc = training_acc_grid[sender_idx][receiver_idx]
-                episode_training_acc = utils.safe_compute_accuracy_metric(training_acc)
-                training_acc.reset()
-
-                test_loss = test_loss_grid[sender_idx][receiver_idx]
-                episode_test_loss = test_loss.compute()
-                test_loss.reset()
-
-                test_acc = test_acc_grid[sender_idx][receiver_idx]
-                episode_test_acc = utils.safe_compute_accuracy_metric(test_acc)
-                test_acc.reset()
-
-                write_dict[f'training_loss_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_training_loss
-                write_dict[f'training_acc_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_training_acc
-                write_dict[f'test_loss_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_test_loss
-                write_dict[f'training_loss_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_training_loss
-
-                training_acc_result.append(episode_training_acc)
-                training_loss_result.append(episode_training_loss)
-                test_acc_result.append(episode_test_acc)
-                test_loss_result.append(episode_test_loss)
-
-        p_bar.set_description(
-            f'Train: L{np.mean(training_loss_result) :.3e} / ACC{np.mean(training_acc_result) :.3e} || Test: L{np.mean(test_loss_result) :.3e} / ACC{np.mean(test_acc_result) :.3e}')
-        writer.add_scalars(main_tag='todotag',
-                           tag_scalar_dict=write_dict,
-                           global_step=alg_params['episode'])
 
         # save and everything needed to restart!
         if alg_params['episode']%save_every==0:
@@ -306,7 +527,6 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
             episode = alg_params['episode']
             #All Models
             for i, sender_model in enumerate(senders):
-                a = sender_model.state_dict()
                 torch.save(sender_model.state_dict(), path+f'/saves/finetune/episode_{alg_params["episode"]}_sender_{i}.pt')
             for i, receiver_model in enumerate(receivers):
                 torch.save(receiver_model.state_dict(), path+f'/saves/finetune/episode_{alg_params["episode"]}_receiver_{i}.pt')
@@ -886,7 +1106,7 @@ def weighted_softmax_commentary_training_interactive_only(senders, receivers, co
 
     writer.flush()
 
-def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, sampling={'style':'epsilon_greedy', 'control':0.1}, fifo_size=10, tscl_polyak=0.0, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99, lr_decay=1.0, entropy_factor=0.0, save_every=10, load_params=False):
+def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, sampling={'style':'epsilon_greedy', 'control':0.1}, fifo_size=10, tscl_polyak=0.0, num_episodes=200, batch_size=512, num_workers=4, repeats_per_epoch=1, device='cpu', baseline_polyak=0.99, lr_decay=1.0, entropy_factor=0.0, save_every=10, test_batch_size=512, test_steps=3, load_params=False):
 
     #indexing here will generally be first sender index, then receiver index for anything that has num_senders x num_receivers elements arranged in a 2d grid
     if not load_params:
@@ -952,21 +1172,35 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
     validation_ds = test_ds[test_val_cutoff:]
     test_ds = test_ds[:test_val_cutoff]
     data_loader_test = data.create_data_loader(
-        test_ds, batch_size=batch_size, num_distractors=num_distractors, num_workers=num_workers, device=device
+        test_ds, batch_size=test_batch_size, num_distractors=num_distractors, num_workers=num_workers, device=device
     )
     #metrics
-    writer = SummaryWriter(path)
+    writer = SummaryWriter(path+'results')
     training_loss_grid = [[torchmetrics.MeanMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
     training_acc_grid = [[torchmetrics.Accuracy() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
     test_loss_grid = [[torchmetrics.MeanMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
     test_acc_grid = [[torchmetrics.Accuracy() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    test_supervised_sender_loss_list = [torchmetrics.MeanMetric() for _ in range(alg_params['num_senders'])]
+    test_supervised_sender_pp_list = [torchmetrics.MeanMetric() for _ in range(alg_params['num_senders'])]
+    test_supervised_receiver_loss_list = [torchmetrics.MeanMetric() for _ in range(alg_params['num_receivers'])]
+    test_supervised_receiver_acc_list = [torchmetrics.Accuracy() for _ in range(alg_params['num_receivers'])]
     entropies = [torchmetrics.MeanMetric() for _ in range(alg_params['num_senders'])]
+
+    #tscl_metrics
+    tscl_counts = [[torchmetrics.SumMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    tscl_q = [[torchmetrics.MeanMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    tscl_qmax = [[torchmetrics.MaxMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    tscl_qmin = [[torchmetrics.MinMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    tscl_cat = [[torchmetrics.CatMetric() for _ in range(alg_params['num_receivers'])] for _ in range(alg_params['num_senders'])]
+    tscl_choice = torchmetrics.CatMetric()
 
 
     for alg_params['episode'] in (p_bar := tqdm(range(alg_params['episode'], alg_params['episode'] + num_episodes))):
+        episode_train_start_time = time.time()
 
         for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_train, repeats_per_epoch):
             sender_idx, receiver_idx = tscl.sample(sampling=sampling)
+
             sender = senders[sender_idx]
             receiver = receivers[receiver_idx]
             receiver.train()
@@ -1015,87 +1249,35 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
             entropies[sender_idx].update(-torch.mean(log_p.to(device='cpu')))
             tscl.update(sender_idx, receiver_idx, -torch.mean(value).to(device='cpu').numpy())
 
+            tscl_counts[sender_idx][receiver_idx].update(1)
+            tscl_task_eval = tscl.task_rewards[tscl.flat_idx(sender_idx, receiver_idx)]
+            tscl_q[sender_idx][receiver_idx].update(tscl_task_eval)
+            tscl_qmax[sender_idx][receiver_idx].update(tscl_task_eval)
+            tscl_qmin[sender_idx][receiver_idx].update(tscl_task_eval)
+            tscl_cat[sender_idx][receiver_idx].update(tscl_task_eval)
+            tscl_choice.update(tscl.flat_idx(sender_idx, receiver_idx))
 
-
-        for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.repeat_dataset(data_loader_test, repeats_per_epoch):
-
-            receiver_idx = random.randrange(0, alg_params['num_receivers'])
-            sender_idx = random.randrange(0, alg_params['num_senders'])
-            sender = senders[sender_idx]
-            receiver = receivers[receiver_idx]
-            receiver.eval()
-            sender.eval()
-
-            all_features_batch = all_features_batch.to(device=device)
-            #target_captions_stack = target_captions_stack.to(device=device)
-            target_idx_batch = target_idx_batch.to(device=device)
-            target_encoded_features = target_distractor_encode_data(all_features_batch, target_idx_batch, num_distractors+1)#before squeezing!
-            target_idx_batch = torch.squeeze(target_idx_batch)
-
-
-            seq, log_p = sender(target_encoded_features, seq_data=None, device=device)
-            seq = seq.detach() # technically not necessary but kind of nicer
-
-            logits = receiver(all_features_batch, seq)
-            loss = criterion(logits, target_idx_batch)
-
-            value = -loss.detach()
-            test_loss_grid[sender_idx][receiver_idx].update(-torch.mean(value).to(device='cpu'))
-            test_acc_grid[sender_idx][receiver_idx].update(logits.to(device='cpu'), target_idx_batch.to(device='cpu'))
-
+        episode_train_end_time = time.time()
+        episode_test_start_time = time.time()
+        # test now!
+        test_interactive(senders=senders, receivers=receivers, test_ds=data_loader_test, test_steps=test_steps,
+                         criterion=criterion, test_loss_grid=test_loss_grid, test_acc_grid=test_acc_grid, device=device)
+        test_supervised_sender(senders=senders, test_ds=data_loader_test, test_steps=test_steps,
+                               test_sender_pp_list=test_supervised_sender_pp_list,
+                               test_sender_loss_list=test_supervised_sender_loss_list, device=device)
+        test_supervised_receiver(receivers=receivers, test_ds=data_loader_test, test_steps=test_steps,
+                                 test_receiver_acc_list=test_supervised_receiver_acc_list,
+                                 test_receiver_loss_list=test_supervised_receiver_loss_list, device=device)
+        episode_test_end_time = time.time()
         #end of episode stuff
         [scheduler_receiver.step() for scheduler_receiver in schedulers_receiver]
         [scheduler_sender.step() for scheduler_sender in schedulers_sender]
 
-        entropy_results = []
-        training_acc_result = []
-        training_loss_result = []
-        test_acc_result = []
-        test_loss_result = []
+        train_time = episode_train_end_time - episode_train_start_time
+        test_time = episode_test_end_time - episode_test_start_time
+        log_progress(training_loss_grid=training_loss_grid, training_acc_grid=training_acc_grid, test_loss_grid=test_loss_grid, test_acc_grid=test_acc_grid, entropies=entropies, sender_sup_loss_list=test_supervised_sender_loss_list, sender_sup_pp_list=test_supervised_sender_pp_list, receiver_sup_loss_list=test_supervised_receiver_loss_list, receiver_sup_acc_list=test_supervised_receiver_acc_list, alg_params=alg_params, writer=writer, train_time=train_time, test_time=test_time, p_bar=p_bar, path=path)
 
-        write_dict = {}
-        for sender_idx in range(alg_params['num_senders']):
-            episode_entropy = entropies[sender_idx].compute()
-            entropies[sender_idx].reset()
-            write_dict[f'entropy_sender_{sender_idx}'] = episode_entropy
-            entropy_results.append(episode_entropy)
-            for receiver_idx in range(alg_params['num_receivers']):
-                training_loss = training_loss_grid[sender_idx][receiver_idx]
-                episode_training_loss = training_loss.compute()
-                training_loss.reset()
-
-                training_acc = training_acc_grid[sender_idx][receiver_idx]
-                episode_training_acc = utils.safe_compute_accuracy_metric(training_acc)
-                training_acc.reset()
-
-                test_loss = test_loss_grid[sender_idx][receiver_idx]
-                episode_test_loss = test_loss.compute()
-                test_loss.reset()
-
-                test_acc = test_acc_grid[sender_idx][receiver_idx]
-                episode_test_acc = utils.safe_compute_accuracy_metric(test_acc)
-                test_acc.reset()
-
-                #tscl value of each task
-                flat_idx = tscl.flat_idx(sender_idx, receiver_idx)
-                tscl_val = tscl.task_rewards[flat_idx]
-
-                write_dict[f'tscl_sender_{sender_idx}_receiver_{receiver_idx}'] = tscl_val
-                write_dict[f'training_loss_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_training_loss
-                write_dict[f'training_acc_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_training_acc
-                write_dict[f'test_loss_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_test_loss
-                write_dict[f'training_loss_sender_{sender_idx}_receiver_{receiver_idx}'] = episode_training_loss
-
-                training_acc_result.append(episode_training_acc)
-                training_loss_result.append(episode_training_loss)
-                test_acc_result.append(episode_test_acc)
-                test_loss_result.append(episode_test_loss)
-
-        p_bar.set_description(
-            f'Train: L{np.mean(training_loss_result) :.3e} / ACC{np.mean(training_acc_result) :.3e} || Test: L{np.mean(test_loss_result) :.3e} / ACC{np.mean(test_acc_result) :.3e}')
-        writer.add_scalars(main_tag='todotag',
-                           tag_scalar_dict=write_dict,
-                           global_step=alg_params['episode'])
+        log_tscl(alg_params=alg_params, writer=writer, tscl_counts=tscl_counts, tscl_q=tscl_q, tscl_qmax=tscl_qmax, tscl_qmin=tscl_qmin, tscl_cat=tscl_cat, tscl_choice=tscl_choice, path=path)
 
         # save and everything needed to restart!
         if alg_params['episode']%save_every==0:

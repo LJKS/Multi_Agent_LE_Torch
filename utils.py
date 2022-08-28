@@ -8,6 +8,12 @@ def repeat_dataset(dataset, repeats=1):
         for elem in dataset:
             yield elem
 
+def take_from_dataset(dataset, n):
+    for i, elem in enumerate(dataset):
+        if i >=n:
+            break
+        yield elem
+
 def safe_compute_accuracy_metric(accuracy):
     try:
         acc = accuracy.compute().to(device='cpu')

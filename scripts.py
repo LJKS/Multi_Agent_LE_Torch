@@ -87,13 +87,14 @@ def tscl_population_training(args):
     receiver_lr = args.finetuning_lr
     sender_lr = args.finetuning_lr
     batch_size = args.batch_size
+    test_batch_size = args.test_batch_size
+    test_steps = args.test_steps
 
     pretraining_epochs = args.pretraining_epochs
     finetuning_epochs = args.finetuning_epochs
 
     repeats_per_epoch = args.repeats_per_epoch
 
-    epsilon = args.epsilon
     fifo_size = args.fifo_size
 
     extend = args.extend
@@ -330,6 +331,8 @@ def baseline_population_training(args):
     lr_decay = args.lr_decay
     save_every = args.save_every
     entropy_factor = args.entropy_regularization
+    test_batch_size = args.test_batch_size
+    test_steps = args.test_steps
 
     senders = [string_to_agent(args.sender) for _ in range(num_senders)]
     receivers = [string_to_agent(args.receiver) for _ in range(num_receivers)]
@@ -355,7 +358,7 @@ def baseline_population_training(args):
 
 
     print('Interactive finetuning')
-    marl_training.baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device, baseline_polyak=0.99, lr_decay=lr_decay, entropy_factor=entropy_factor, save_every=save_every, load_params=extend)
+    marl_training.baseline_multiagent_training_interactive_only(senders, receivers, receiver_lr, sender_lr, num_distractors, path, num_episodes=finetuning_epochs, batch_size=batch_size, repeats_per_epoch=repeats_per_epoch, device=device, baseline_polyak=0.99, lr_decay=lr_decay, entropy_factor=entropy_factor, save_every=save_every, test_batch_size=test_batch_size, test_steps=test_steps, load_params=extend)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='scripts running MARL LE experiments')
@@ -367,6 +370,8 @@ if __name__ == '__main__':
     parser.add_argument('--num_senders', type=int, default=2)
     parser.add_argument('--num_receivers', type=int, default=2)
     parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--test_batch_size', type=int, default=8192)
+    parser.add_argument('--test_steps', type=int, default=3)
     parser.add_argument('--pretraining_epochs', type=int, default=25)
     parser.add_argument('--finetuning_epochs', type=int, default=200)
     parser.add_argument('--num_distractors', type=int, default=1)
