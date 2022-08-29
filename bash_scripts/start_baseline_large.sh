@@ -1,4 +1,4 @@
-start_baseline_medium.sh#!/bin/bash
+#!/bin/bash
 #SBATCH --time=4-00:00
 #SBATCH --mem=200gb
 #SBATCH --gpus=1
