@@ -71,7 +71,12 @@ def save_pretrained_models(senders, receivers, path):
 
 def tscl_population_training(args):
     print(f'Sees {torch.cuda.device_count()} CUDA devices')
-    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'fifo_size', 'epsilon', 'sender', 'receiver']
+    key_args = ['num_senders', 'num_receivers', 'num_distractors', 'fifo_size', 'tscl_epsilon', 'sender', 'receiver', 'tscl_sampling', 'entropy_regularization']
+
+    if args.tscl_sampling == 'epsilon_greedy':
+        key_args.append('tscl_epsilon')
+    elif args.tscl_sampling == 'thompson_sampling':
+        key_args.append('tscl_thompson_temp')
 
     run_date = get_run_date(args.run_key, args.extend)
     path = f'results/{args.experiment}/{summarize_key_args(args, key_args)}/{run_date + args.run_key}/'

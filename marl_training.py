@@ -97,7 +97,7 @@ def prob_mask(tokens, eos_token=4):
 
     return eos_tokens
 
-def test_interactive(senders, receivers, test_ds, test_steps, criterion, test_loss_grid, test_acc_grid, device):
+def test_interactive(senders, receivers, test_ds, test_steps, criterion, test_loss_grid, test_acc_grid, num_distractors, device):
     for sender_idx in range(len(senders)):
         for receiver_idx in range(len(receivers)):
             for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.take_from_dataset(test_ds, test_steps):
@@ -122,9 +122,9 @@ def test_interactive(senders, receivers, test_ds, test_steps, criterion, test_lo
                 test_loss_grid[sender_idx][receiver_idx].update(-torch.mean(value).to(device='cpu'))
                 test_acc_grid[sender_idx][receiver_idx].update(logits.to(device='cpu'), target_idx_batch.to(device='cpu'))
 
-def test_supervised_sender(senders, test_ds, test_steps, test_sender_pp_list, test_sender_loss_list, device):
+def test_supervised_sender(senders, test_ds, test_steps, test_sender_pp_list, test_sender_loss_list, num_distractors, device):
     criterion = torch.nn.CrossEntropyLoss(reduction='none')
-    for sender_idx in senders:
+    for sender_idx in range(len(senders)):
         for all_features_batch, target_features_batch, target_captions_stack, target_idx_batch, ids_batch in utils.take_from_dataset(
             test_ds, test_steps):
             sender = senders[sender_idx]
@@ -140,7 +140,7 @@ def test_supervised_sender(senders, test_ds, test_steps, test_sender_pp_list, te
             loss = torch.mean(loss)
             #calc pp - cce is logp for each predicted token
             log_p_by_sentence = torch.sum(cce, dim=-1) #notice multiplying with mask sets this to 0 whereever outside of sentence!
-            num_words_by_sentence = torch.sum(prob_mask(target_captions_stack))
+            num_words_by_sentence = torch.sum(prob_mask(target_captions_stack), dim=-1)
             print(f'TODO - remove this (PP calc): {log_p_by_sentence.size()}, {num_words_by_sentence.size()}')
             #calc geometric mean of word probabilities for pp for each sentence
             norm_sentence_p = torch.exp(log_p_by_sentence/num_words_by_sentence)
@@ -230,13 +230,13 @@ def log_progress(training_loss_grid, training_acc_grid, test_loss_grid, test_acc
         receiver_sup_acc_list[receiver_idx].reset()
 
         write_dict[f'sup_loss_receiver_{receiver_idx}'] = sup_receiver_loss
-        write_dict[f'sup_acc_receiver_{[receiver_idx]}'] = sup_receiver_acc
+        write_dict[f'sup_acc_receiver_{receiver_idx}'] = sup_receiver_acc
         
     writer.add_scalars(main_tag='Summary/WallTime', tag_scalar_dict={'TrainTime':train_time, 'TestTime':test_time})
-    writer.add_scalar(tag='Summary/Mean_Training_Loss', value=np.nanmean(training_loss_result), global_step=step)
-    writer.add_scalar(tag='Summary/Mean_Training_Accuracy', value=np.nanmean(training_acc_result), global_step=step)
-    writer.add_scalar(tag='Summary/Mean_Test_Loss', value=np.nanmean(test_loss_result), global_step=step)
-    writer.add_scalar(tag='Summary/Mean_Test_Accuracy', value=np.nanmean(test_acc_result), global_step=step)
+    writer.add_scalar(tag='Summary/Mean_Training_Loss', scalar_value=np.nanmean(training_loss_result), global_step=step)
+    writer.add_scalar(tag='Summary/Mean_Training_Accuracy', scalar_value=np.nanmean(training_acc_result), global_step=step)
+    writer.add_scalar(tag='Summary/Mean_Test_Loss', scalar_value=np.nanmean(test_loss_result), global_step=step)
+    writer.add_scalar(tag='Summary/Mean_Test_Accuracy', scalar_value=np.nanmean(test_acc_result), global_step=step)
     entropy_dict = dict([(f'Sender_{i}', entropy) for i, entropy in enumerate(entropy_results)])
     entropy_dict['Mean_of_Senders'] = np.nanmean(entropy_results)
     writer.add_scalars(main_tag='Summary/Sender_Entropy', tag_scalar_dict=entropy_dict, global_step=step)
@@ -258,9 +258,9 @@ def log_progress(training_loss_grid, training_acc_grid, test_loss_grid, test_acc
     writer.add_scalars(main_tag='Summary/Supervised_Receiver_Accuracy', tag_scalar_dict=sup_receiver_acc_dict, global_step=step)
 
     for sender_idx in range(alg_params['num_senders']):
-        writer.add_scalar(tag=f'Agents/Sender_{sender_idx}/Entropy', value=write_dict[f'entropy_sender_{sender_idx}'], global_step=step)
-        writer.add_scalar(tag=f'Agents/Sender_{sender_idx}/Supervised_Perplexity', value=write_dict[f'sup_pp_sender_{sender_idx}'], global_step=step)
-        writer.add_scalar(tag=f'Agents/Sender_{sender_idx}/Supervised_Loss', value=write_dict[f'sup_loss_sender_{sender_idx}'], global_step=step)
+        writer.add_scalar(tag=f'Agents/Sender_{sender_idx}/Entropy', scalar_value=write_dict[f'entropy_sender_{sender_idx}'], global_step=step)
+        writer.add_scalar(tag=f'Agents/Sender_{sender_idx}/Supervised_Perplexity', scalar_value=write_dict[f'sup_pp_sender_{sender_idx}'], global_step=step)
+        writer.add_scalar(tag=f'Agents/Sender_{sender_idx}/Supervised_Loss', scalar_value=write_dict[f'sup_loss_sender_{sender_idx}'], global_step=step)
         
         interactive_train_loss_dict = dict([(f'With_Receiver_{i}', write_dict[f'training_loss_sender_{sender_idx}_receiver_{i}']) for i in range(alg_params['num_receivers'])])
         interactive_train_loss_dict['Mean'] = np.nanmean([interactive_train_loss_dict[key] for key in interactive_train_loss_dict.keys()])
@@ -279,8 +279,8 @@ def log_progress(training_loss_grid, training_acc_grid, test_loss_grid, test_acc
         writer.add_scalars(main_tag=f'Agents/Sender_{sender_idx}/Interaction_Test_Accuracy', tag_scalar_dict=interactive_test_acc_dict, global_step=step)
 
     for receiver_idx in range(alg_params['num_receivers']):
-        writer.add_scalar(tag=f'Agents/Receiver_{receiver_idx}/Supervised_Accuracy', value=write_dict[f'sup_acc_receiver_{receiver_idx}'], global_step=step)
-        writer.add_scalar(tag=f'Agents/Receiver_{receiver_idx}/Supervised_Loss', value=write_dict[f'sup_loss_receiver_{receiver_idx}'], global_step=step)
+        writer.add_scalar(tag=f'Agents/Receiver_{receiver_idx}/Supervised_Accuracy', scalar_value=write_dict[f'sup_acc_receiver_{receiver_idx}'], global_step=step)
+        writer.add_scalar(tag=f'Agents/Receiver_{receiver_idx}/Supervised_Loss', scalar_value=write_dict[f'sup_loss_receiver_{receiver_idx}'], global_step=step)
         
         interactive_train_loss_dict = dict([(f'With_Sender_{i}', write_dict[f'training_loss_sender_{i}_receiver_{receiver_idx}']) for i in range(alg_params['num_senders'])])
         interactive_train_loss_dict['Mean'] = np.nanmean([interactive_train_loss_dict[key] for key in interactive_train_loss_dict.keys()])
@@ -339,19 +339,19 @@ def log_tscl(alg_params, writer, tscl_counts, tscl_q, tscl_qmax, tscl_qmin, tscl
     tscl_choice.reset()
     write_dict['choice_list'] = choices
 
-    for sender_idx in range(len(alg_params['num_senders'])):
+    for sender_idx in range(alg_params['num_senders']):
         count = 0
         q_agg = []
-        for receiver_idx in range(len(alg_params['num_receivers'])):
+        for receiver_idx in range(alg_params['num_receivers']):
             count += write_dict[f'count_sender{sender_idx}_receiver_{receiver_idx}']
             q_agg.append(write_dict[f'meanq_sender{sender_idx}_receiver_{receiver_idx}'])
         sender_p = count/normalizer
         sender_q = np.mean(q_agg)
         writer.add_scalars(main_tag=f'TSCL/Agent/Sender_{sender_idx}', tag_scalar_dict={'Sampling_Probability':sender_p, 'Sender_average_Q':sender_q}, global_step=step)
-    for receiver_idx in range(len(alg_params['num_receivers'])):
+    for receiver_idx in range(alg_params['num_receivers']):
         count = 0
         q_agg = []
-        for sender_idx in range(len(alg_params['num_senders'])):
+        for sender_idx in range(alg_params['num_senders']):
             count += write_dict[f'count_sender{sender_idx}_receiver_{receiver_idx}']
             q_agg.append(write_dict[f'meanq_sender{sender_idx}_receiver_{receiver_idx}'])
         receiver_p = count/normalizer
@@ -487,7 +487,7 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
             log_p_mask = prob_mask(seq)
             log_p = log_p*log_p_mask
             log_p = torch.sum(log_p, dim=1)
-            print(log_p.shape, loss.shape, 'training shapes!')
+            print(log_p.shape, loss.shape, (entropy_factor*log_p).shape, 'training shapes!')
             value = (-loss - entropy_factor*log_p).detach()
             baselined_value = value - baselines[sender_idx, receiver_idx]
             sender_reinforce_objective = log_p*baselined_value
@@ -498,15 +498,15 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
             avg_value = torch.mean(value)
             baselines[sender_idx, receiver_idx] = baseline_polyak*baselines[sender_idx, receiver_idx] + (1.-baseline_polyak)*avg_value
 
-            training_loss_grid[sender_idx][receiver_idx].update(-torch.mean(value).to(device='cpu'))
+            training_loss_grid[sender_idx][receiver_idx].update(-torch.mean(loss).to(device='cpu'))
             training_acc_grid[sender_idx][receiver_idx].update(logits.to(device='cpu'), target_idx_batch.to(device='cpu'))
             entropies[sender_idx].update(-torch.mean(log_p.to(device='cpu')))
         episode_train_end_time = time.time()
 
         episode_test_start_time = time.time()
         #test now!
-        test_interactive(senders=senders, receivers=receivers, test_ds=data_loader_test, test_steps=test_steps, criterion=criterion, test_loss_grid=test_loss_grid, test_acc_grid=test_acc_grid, device=device)
-        test_supervised_sender(senders=senders, test_ds=data_loader_test, test_steps=test_steps, test_sender_pp_list=test_supervised_sender_pp_list, test_sender_loss_list=test_supervised_sender_loss_list, device=device)
+        test_interactive(senders=senders, receivers=receivers, test_ds=data_loader_test, test_steps=test_steps, criterion=criterion, test_loss_grid=test_loss_grid, test_acc_grid=test_acc_grid, num_distractors=num_distractors, device=device)
+        test_supervised_sender(senders=senders, test_ds=data_loader_test, test_steps=test_steps, test_sender_pp_list=test_supervised_sender_pp_list, test_sender_loss_list=test_supervised_sender_loss_list, num_distractors=num_distractors, device=device)
         test_supervised_receiver(receivers=receivers, test_ds=data_loader_test, test_steps=test_steps, test_receiver_acc_list=test_supervised_receiver_acc_list, test_receiver_loss_list=test_supervised_receiver_loss_list, device=device)
         episode_test_end_time = time.time()
 
@@ -1234,6 +1234,7 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
             log_p_mask = prob_mask(seq)
             log_p = log_p*log_p_mask
             log_p = torch.sum(log_p, dim=1)
+            print(log_p.shape, loss.shape, (entropy_factor*log_p).shape, 'training shapes!')
             value = (-loss - entropy_factor*log_p).detach()
             baselined_value = value - baselines[sender_idx, receiver_idx]
             sender_reinforce_objective = log_p*baselined_value
@@ -1244,7 +1245,7 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
             avg_value = torch.mean(value)
             baselines[sender_idx, receiver_idx] = baseline_polyak*baselines[sender_idx, receiver_idx] + (1.-baseline_polyak)*avg_value
 
-            training_loss_grid[sender_idx][receiver_idx].update(-torch.mean(value).to(device='cpu'))
+            training_loss_grid[sender_idx][receiver_idx].update(-torch.mean(loss).to(device='cpu'))
             training_acc_grid[sender_idx][receiver_idx].update(logits.to(device='cpu'), target_idx_batch.to(device='cpu'))
             entropies[sender_idx].update(-torch.mean(log_p.to(device='cpu')))
             tscl.update(sender_idx, receiver_idx, -torch.mean(value).to(device='cpu').numpy())
@@ -1261,10 +1262,10 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
         episode_test_start_time = time.time()
         # test now!
         test_interactive(senders=senders, receivers=receivers, test_ds=data_loader_test, test_steps=test_steps,
-                         criterion=criterion, test_loss_grid=test_loss_grid, test_acc_grid=test_acc_grid, device=device)
+                         criterion=criterion, test_loss_grid=test_loss_grid, test_acc_grid=test_acc_grid, num_distractors=num_distractors, device=device)
         test_supervised_sender(senders=senders, test_ds=data_loader_test, test_steps=test_steps,
                                test_sender_pp_list=test_supervised_sender_pp_list,
-                               test_sender_loss_list=test_supervised_sender_loss_list, device=device)
+                               test_sender_loss_list=test_supervised_sender_loss_list, num_distractors=num_distractors, device=device)
         test_supervised_receiver(receivers=receivers, test_ds=data_loader_test, test_steps=test_steps,
                                  test_receiver_acc_list=test_supervised_receiver_acc_list,
                                  test_receiver_loss_list=test_supervised_receiver_loss_list, device=device)
