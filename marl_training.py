@@ -141,7 +141,6 @@ def test_supervised_sender(senders, test_ds, test_steps, test_sender_pp_list, te
             #calc pp - cce is logp for each predicted token
             log_p_by_sentence = torch.sum(cce, dim=-1) #notice multiplying with mask sets this to 0 whereever outside of sentence!
             num_words_by_sentence = torch.sum(prob_mask(target_captions_stack), dim=-1)
-            print(f'TODO - remove this (PP calc): {log_p_by_sentence.size()}, {num_words_by_sentence.size()}')
             #calc geometric mean of word probabilities for pp for each sentence
             norm_sentence_p = torch.exp(log_p_by_sentence/num_words_by_sentence)
             sentence_pp = 1/norm_sentence_p
@@ -487,7 +486,6 @@ def baseline_multiagent_training_interactive_only(senders, receivers, receiver_l
             log_p_mask = prob_mask(seq)
             log_p = log_p*log_p_mask
             log_p = torch.sum(log_p, dim=1)
-            print(log_p.shape, loss.shape, (entropy_factor*log_p).shape, 'training shapes!')
             value = (-loss - entropy_factor*log_p).detach()
             baselined_value = value - baselines[sender_idx, receiver_idx]
             sender_reinforce_objective = log_p*baselined_value
@@ -1234,7 +1232,6 @@ def tscl_multiagent_training_interactive_only(senders, receivers, receiver_lr, s
             log_p_mask = prob_mask(seq)
             log_p = log_p*log_p_mask
             log_p = torch.sum(log_p, dim=1)
-            print(log_p.shape, loss.shape, (entropy_factor*log_p).shape, 'training shapes!')
             value = (-loss - entropy_factor*log_p).detach()
             baselined_value = value - baselines[sender_idx, receiver_idx]
             sender_reinforce_objective = log_p*baselined_value
