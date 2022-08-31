@@ -16,7 +16,7 @@ srun sleep 10
 
 for i in {1..9}
 do
-  srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment baseline_population_training --num_senders 2 --num_receivers 2 --finetuning_epochs 50 --save_every 1 --run_key $1 -- extend True
+  srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment baseline_population_training --num_senders 2 --num_receivers 2 --finetuning_epochs 50 --save_every 1 --run_key $1 --extend True
   #just make sure system got time to save all the models and stuff...
   srun sleep 10
 done
