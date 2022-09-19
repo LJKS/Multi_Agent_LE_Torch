@@ -15,7 +15,7 @@ do
   for epsilon_val in 0.05 0.1 0.15 0.2
   do
     echo "tscl_epsilon${epsilon_val}_run${runi}"
-    srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment tscl_population_training --num_senders 2 --num_receivers 2 --finetuning_epochs 150 --save_every 50 --run_key "tscl_epsilon${epsilon_val}_run${runi}" --tscl_sampling epsilon_greedy --tscl_epsilon $epsilon_val
+    srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment tscl_population_training --num_senders 2 --num_receivers 2 --finetuning_epochs 150 --save_every 50 --run_key "tscl_epsilon${epsilon_val}_run${runi}_small" --tscl_sampling epsilon_greedy --tscl_epsilon $epsilon_val
 
   done
 done
