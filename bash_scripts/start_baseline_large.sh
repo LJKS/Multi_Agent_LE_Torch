@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=4-00:00
+#SBATCH --time=5-00:00
 #SBATCH --mem=200gb
 #SBATCH --gpus=1
 #SBATCH --ntasks=1
@@ -14,7 +14,7 @@ srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment basel
 #just make sure system got time to save all the models and stuff...
 srun sleep 10
 
-for i in {1..29}
+for (( i=1; i<=$2; i++ ))
 do
   srun python $HOME/experiments/Multi_Agent_LE_Torch/scripts.py --experiment baseline_population_training --num_senders 10 --num_receivers 10 --finetuning_epochs 50 --save_every 1 --run_key $1 --extend True
   #just make sure system got time to save all the models and stuff...
