@@ -13,11 +13,11 @@ done
 echo "$experiment $run_key $num_agents $iterations $extend"
 
 #check if start from scratch
-if [ extend = "true" ];
+if [ "$extend" = "true" ];
 then
   JOBID=$(sbatch --parsable --nice runscript.sh $run_key $num_agents False $experiment)
 fi;
-if [ $extend = "false" ];
+if [ "$extend" = "false" ];
 then
   JOBID=$(sbatch --parsable --nice runscript.sh $run_key $num_agents True $experiment)
 fi;
