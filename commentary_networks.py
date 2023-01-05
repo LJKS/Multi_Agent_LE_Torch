@@ -1,4 +1,24 @@
 import torch
+class grid_commentary_network(torch.nn.Module):
+    def __init__(self, num_senders, num_receivers):
+        super().__init__()
+        self.num_senders = num_senders
+        self.num_receivers = num_receivers
+        #I'm completely misusing Embeddings here, sorry PyTorch gods!
+        self.commentary_weights = torch.nn.Embedding(num_embeddings=num_senders*num_receivers, embedding_dim=1)
+        #Softmax over dim 0 because Embeddings have shape [num_senders*num_receivers,1]
+        self.normalize = torch.nn.Softmax(dim=0)
+
+    def forward(self, sender_idx, receiver_idx):
+        rel_weights = self.normalize(self.commentary_weights.weight)
+        flat_idx = sender_idx*self.num_receivers + receiver_idx
+        return torch.squeeze(rel_weights)[flat_idx]
+
+
+
+
+
+
 
 class idx_commentary_network(torch.nn.Module):
     def __init__(self, num_senders, num_receivers, embedding_size, hidden_size):

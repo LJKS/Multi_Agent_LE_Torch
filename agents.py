@@ -211,3 +211,32 @@ class lstm_receiver_agent(torch.nn.Module):
         logits = torch.squeeze(self.readout_layer(out_hidden))
         return logits
 
+    def extract_features(self, img_data, seq):
+        f_embedding = torch.tanh(self.feature_embedding_hidden(img_data))
+        c_state = [torch.mean(emb(f_embedding), dim=1) for emb in self.feature_embedding_cstate]
+        c_state = torch.stack(c_state, dim=0)
+        h_state = [torch.mean(emb(f_embedding), dim=1) for emb in self.feature_embedding_hstate]
+        h_state = torch.stack(h_state, dim=0)
+
+        s_embedding = self.seq_embedding(seq)
+        lstm_out, _ = self.lstm(s_embedding, (h_state, c_state))
+
+        f_out_embedding = torch.tanh(self.readout_feature_embedding(img_data))
+
+        num_features = img_data.size()[1]
+        seq_mask = prob_mask(seq)
+        #round first to make sure there is no stupid float accuracy issue that shifts the index
+        eos_indices = torch.round((torch.sum(seq_mask, dim=1))).long() -1 # -1 because indexing starts at 0 rather than 1... (e.g. the absurd case of eos at tstep zero creates a sum of 1)
+        #prepare indices for gather from lstm output by expanding dims via None axes
+        eos_indices = eos_indices[:,None, None]
+        eos_indices = eos_indices.expand(-1,-1,self.lstm_size)
+        eos_indices = eos_indices.clone().detach()
+        #print(eos_indices.size())
+        eos_lstm_outs = torch.gather(input=lstm_out, dim=1, index=eos_indices)
+        #print(eos_lstm_outs.size())
+        lstm_out_by_item = eos_lstm_outs.expand(-1,num_features, -1)
+        lstm_out_by_item = lstm_out_by_item.clone()
+        out_hidden = torch.cat([f_out_embedding, lstm_out_by_item], dim=-1) #concat on feature dim (now shape [batchsize, num_features, lstm_size+hiddenreadoutdepth])
+        out_hidden = torch.tanh(self.readout_hidden_layer(out_hidden))
+        logits = torch.squeeze(self.readout_layer(out_hidden))
+        return out_hidden

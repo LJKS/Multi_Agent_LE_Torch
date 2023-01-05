@@ -392,7 +392,7 @@ if __name__ == '__main__':
     parser.add_argument('--run_key', type=str, default='default', required=True)
     parser.add_argument('--extend', type=bool, default=False)
     parser.add_argument('--lr_decay', type=float, default=1.0)
-    parser.add_argument('--save_every', type=int, default=10)
+    parser.add_argument('--save_every', type=int, default=20)
     parser.add_argument('--forceload_args', type=bool, default=False)
     parser.add_argument('--tscl_sampling', type=str, default='epsilon_greedy', choices=['epsilon_greedy','thompson_sampling'])
 

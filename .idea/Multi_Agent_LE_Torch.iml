@@ -64,6 +64,7 @@
       <excludeFolder url="file://$MODULE_DIR$/results/commentary_idx_training_lstm128" />
       <excludeFolder url="file://$MODULE_DIR$/results/old_results" />
       <excludeFolder url="file://$MODULE_DIR$/results/tscl_population_training_lstm128" />
+      <excludeFolder url="file://$MODULE_DIR$/results" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.9 (Multi_Agent_LE_Torch2)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
