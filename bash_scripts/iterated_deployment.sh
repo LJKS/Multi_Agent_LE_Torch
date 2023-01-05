@@ -10,6 +10,7 @@ do
 
     esac
 done
+echo "$experiment $run_key $num_agents $iterations $extend"
 
 #check if start from scratch
 if [ extend = "true" ];
