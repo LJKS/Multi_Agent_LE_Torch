@@ -1,10 +1,32 @@
 #!/bin/bash
-# args: $1 --> run_key (name), $2 num_agents (int), $3 how many iterations beyond the first should be deployed
-JOBID=$(sbatch runscript.sh $1 $2 False --parsable)
-sleep 1
-for (( i=1; i<=$3; i++ ))
+while getopts e:n:a:i:s: flag
 do
-  JOBID=$(sbatch --parsable --dependency=afterok:${JOBID##* }} runscript.sh $1 $2 True)
+    case "${flag}" in
+        e) experiment=${OPTARG};;
+        n) run_key=${OPTARG};;
+        a) num_agents=${OPTARG};;
+        i) iterations=${OPTARG};;
+        s) extend=${OPTARG};;
+
+    esac
+done
+
+#check if start from scratch
+if [ extend = "true" ];
+then
+  JOBID=$(sbatch --parsable --nice runscript.sh $run_key $num_agents False $experiment)
+fi;
+if [ $extend = "false" ];
+then
+  JOBID=$(sbatch --parsable --nice runscript.sh $run_key $num_agents True $experiment)
+fi;
+
+sleep 1
+echo $JOBID
+
+for (( i=1; i<=$iterations; i++ ))
+do
+  JOBID=$(sbatch --parsable --nice --dependency=afterok:$JOBID runscript.sh $run_key $num_agents True $experiment)
   echo $JOBID
   sleep 1
 done
