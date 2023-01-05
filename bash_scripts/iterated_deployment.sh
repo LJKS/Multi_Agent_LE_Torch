@@ -15,19 +15,19 @@ echo "$experiment $run_key $num_agents $iterations $extend"
 #check if start from scratch
 if [ "$extend" = "true" ];
 then
-  JOBID=$(sbatch --parsable --nice runscript.sh $run_key $num_agents False $experiment)
+  JOBID=$(sbatch --parsable --nice runscript.sh $run_key $num_agents True $experiment)
 fi;
 if [ "$extend" = "false" ];
 then
-  JOBID=$(sbatch --parsable --nice runscript.sh $run_key $num_agents True $experiment)
+  JOBID=$(sbatch --parsable --nice runscript.sh $run_key $num_agents False $experiment)
 fi;
 
-sleep 1
+sleep 0.01
 echo $JOBID
 
 for (( i=1; i<=$iterations; i++ ))
 do
   JOBID=$(sbatch --parsable --nice --dependency=afterok:$JOBID runscript.sh $run_key $num_agents True $experiment)
   echo $JOBID
-  sleep 1
+  sleep 0.01
 done
