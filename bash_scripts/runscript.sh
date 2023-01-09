@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=5-00:00
+#SBATCH --time=0-07:00
 #SBATCH --mem=200gb
 #SBATCH --gpus=1
 #SBATCH --ntasks=1

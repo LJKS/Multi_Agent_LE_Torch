@@ -137,7 +137,13 @@ class cbow_average_module(torch.nn.Module):
         average = torch.mean(x, dim=self.average_dim)
         return average
 
-
+def util_bool_string(string: str):
+    if string == 'True':
+        return True
+    if string == 'False':
+        return False
+    #This is bad coding
+    assert False, 'Input Bool String was not a Boolean'
 
 
 

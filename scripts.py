@@ -12,6 +12,9 @@ import pickle
 from datetime import datetime
 from tqdm import tqdm
 
+import utils
+
+
 def save_hyperparams(path, hyperparams):
     with open(path + 'hyperparameters.pickle', 'wb') as file:
         pickle.dump(hyperparams, file)
@@ -390,7 +393,7 @@ if __name__ == '__main__':
     parser.add_argument('--repeats_per_epoch', type=int, default=1)
     parser.add_argument('--entropy_regularization', type=float, default=0.0)
     parser.add_argument('--run_key', type=str, default='default', required=True)
-    parser.add_argument('--extend', type=bool, default=False)
+    parser.add_argument('--extend', type=str, default='False', choices=['True', 'False'])
     parser.add_argument('--lr_decay', type=float, default=1.0)
     parser.add_argument('--save_every', type=int, default=25)
     parser.add_argument('--forceload_args', type=bool, default=False)
@@ -398,8 +401,10 @@ if __name__ == '__main__':
 
     script_dict = {'baseline_population_training':baseline_population_training, 'tscl_population_training':tscl_population_training, 'commentary_weighting_training':commentary_weighting_training, 'commentary_idx_training':commentary_idx_training}
     args = parser.parse_args()
-    print(vars(args))
 
+    #Input string as boolean is broken in Python, have to convert manually!
+    args.extend = utils.util_bool_string(args.extend)
+    print(vars(args))
     #make sure the run is legit, i.e. if a run is to be extended, the run does already exist, if start from scratch make sure a new key is used!
     os.makedirs(os.path.dirname(os.path.abspath(__file__)) + '/results/rundocs', exist_ok=True)
     os.makedirs(os.path.dirname(os.path.abspath(__file__)) + '/results/rundocs/runargs', exist_ok=True)
