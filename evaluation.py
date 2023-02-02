@@ -241,6 +241,10 @@ def main(dirs):
 
 def main():
     df = runs_dataframe()
+    with open('analysis_data.pickle', 'wb') as file:
+        pickle.dump(df, file)
+    """
+    
     pop_sizes = [2,5,10]
     res = []
     for pop_size in pop_sizes:
@@ -248,7 +252,7 @@ def main():
         dfp = eval_data(dfp)
         res.append(dfp)
     return res[0], res[1], res[2]
-
+    """
 if __name__ == '__main__':
     main()
     """
